@@ -602,7 +602,7 @@ class Flowrecorder:
         print(self._include_subnet_tree)
 
 ################################################################################
-#       all users
+#       all users CMD TYPE 2
 ################################################################################
     def start_fr_by_host(self, record_file_type):
         try:
@@ -627,10 +627,8 @@ class Flowrecorder:
                         #fh.write(','.join(fieldnames))
                         #fh.write('\r\n')
                     #time.sleep(1)
-                    self.parse_data_by_host(raw_data[0], record_file_type)
-                    logger_recorder.info(
-                        'Flow info by host from interfaces {} is extracted to {} successfully!'.format(
-                            intf, FLOW_USER_LOG_FOLDER))
+                    self.parse_data_by_host(raw_data[0], record_file_type, intf)
+                    #logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(intf, FLOW_USER_LOG_FOLDER))
             else:
                 raw_data = subprocess_open(self._cmd)
                 if 'Cannot connect to server' in raw_data[0]:
@@ -640,10 +638,8 @@ class Flowrecorder:
                 elif 'no matching objects' in raw_data[0]:
                     logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
                 else:
-                    self.parse_data_by_host(raw_data[0], record_file_type)
-                    logger_recorder.info(
-                        'Flow info by host from interfaces {} is extracted to {} successfully!'.format(
-                            intf, FLOW_USER_LOG_FOLDER))
+                    self.parse_data_by_host(raw_data[0], record_file_type, intf)
+                    #logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(intf, FLOW_USER_LOG_FOLDER))
         except Exception as e:
             logger_recorder.error("do_csv_log() cannot be executed, {}".format(e))
             pass
@@ -662,9 +658,9 @@ class Flowrecorder:
                 result[cidr] = str(cidr)
         return result
 ################################################################################
-#       all users
+#       all users CMD TYPE 2
 ################################################################################
-    def parse_data_by_host(self, raw_data, record_file_type):
+    def parse_data_by_host(self, raw_data, record_file_type, *args):
         """
         def parse is the function that parses raw data from the shell into csv and txt
         csv_data_row is the raw data,
@@ -845,10 +841,11 @@ class Flowrecorder:
         except Exception as e:
             logger_recorder.error("parse_data_by_host() cannot be executed, {}".format(e))
             pass
-        return 0
+        else:
+            logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(args[0], FLOW_USER_LOG_FOLDER))
 
 ################################################################################
-#       Write the txt type log from the command
+#       Write the txt type log from the command type 3
 ################################################################################
     def start_fr_txt(self):
         try:
@@ -1180,8 +1177,8 @@ successfully!'.format(intf, self._txt_logfilepath))
                             fh.write(','.join(fieldnames))
                             fh.write('\r\n')
                         time.sleep(1)
-                        self.parse_fr_csv(raw_data[0], filename_by_src_path)
-                        logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
+                        self.parse_fr_csv(raw_data[0], filename_by_src_path, src_host)
+                        #logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
                 else:
                     raw_data = subprocess_open(self._cmd)
                     if 'Cannot connect to server' in raw_data[0]:
@@ -1191,8 +1188,8 @@ successfully!'.format(intf, self._txt_logfilepath))
                     elif 'no matching objects' in raw_data[0]:
                         logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, raw_data[0]))
                     else:
-                        self.parse_fr_csv(raw_data[0], filename_by_src_path)
-                        logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
+                        self.parse_fr_csv(raw_data[0], filename_by_src_path, src_host)
+                        #logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
 ###############################################################################
 # CASE when dest_host exist in CMD
 ###############################################################################
@@ -1222,8 +1219,8 @@ successfully!'.format(intf, self._txt_logfilepath))
                             fh.write(','.join(fieldnames))
                             fh.write('\r\n')
                         time.sleep(1)
-                        self.parse_fr_csv(raw_data[0], filename_by_dst_path)
-                        logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(dst_host, filename_by_dst_path))
+                        self.parse_fr_csv(raw_data[0], filename_by_dst_path, dst_host)
+                        #logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(dst_host, filename_by_dst_path))
                 else:
                     raw_data = subprocess_open(self._cmd)
                     if 'Cannot connect to server' in raw_data[0]:
@@ -1233,8 +1230,8 @@ successfully!'.format(intf, self._txt_logfilepath))
                     elif 'no matching objects' in raw_data[0]:
                         logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, raw_data[0]))
                     else:
-                        self.parse_fr_csv(raw_data[0], filename_by_dst_path)
-                        logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(dst_host, filename_by_dst_path))
+                        self.parse_fr_csv(raw_data[0], filename_by_dst_path, dst_host)
+                        #logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(dst_host, filename_by_dst_path))
 ###############################################################################
 # CASE when source_host and dest_host don't exist in CMD
 ###############################################################################
@@ -1258,9 +1255,8 @@ successfully!'.format(intf, self._txt_logfilepath))
                             fh.write(','.join(fieldnames))
                             fh.write('\r\n')
                         time.sleep(1)
-                        self.parse_fr_csv(raw_data[0], self._csv_logfilepath)
-                        logger_recorder.info('Flow info default from interfaces {} is extracted to {} \
-successfully!'.format(intf, self._csv_logfilepath))
+                        self.parse_fr_csv(raw_data[0], self._csv_logfilepath, intf)
+                        #logger_recorder.info('Flow info default from interfaces {} is extracted to {} successfully!'.format(intf, self._csv_logfilepath))
                 else:
                     raw_data = subprocess_open(self._cmd)
                     if 'Cannot connect to server' in raw_data[0]:
@@ -1270,9 +1266,8 @@ successfully!'.format(intf, self._csv_logfilepath))
                     elif 'no matching objects' in raw_data[0]:
                         logger_recorder.error("{} - {}".format(self._cmd, raw_data[0]))
                     else:
-                        self.parse_fr_csv(raw_data[0], self._csv_logfilepath)
-                        logger_recorder.info('Flow info default from interfaces {} is extracted to {} \
-successfully!'.format(intf, self._csv_logfilepath))
+                        self.parse_fr_csv(raw_data[0], self._csv_logfilepath, intf)
+                        #logger_recorder.info('Flow info default from interfaces {} is extracted to {} successfully!'.format(intf, self._csv_logfilepath))
         except Exception as e:
             logger_recorder.error("start_fr_csv() cannot be executed, {}".format(e))
             pass
@@ -1282,7 +1277,7 @@ successfully!'.format(intf, self._csv_logfilepath))
 #       csv_data_row : data from command
 #       logpath : path to write data
 ################################################################################
-    def parse_fr_csv(self, csv_data_row, logpath):
+    def parse_fr_csv(self, csv_data_row, logpath, *args):
         try:
             #pattern = r'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
             #pattern_01 = r'[-]{1,10}'
@@ -1316,3 +1311,9 @@ successfully!'.format(intf, self._csv_logfilepath))
         except Exception as e:
             logger_recorder.error("parse_fr_csv() cannot be executed, {}".format(e))
             pass
+        else:
+            if re.search('[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', args[0]):
+                logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
+            else:
+                logger_recorder.info('Flow info default from interfaces {} is extracted to {} successfully!'.format(args[0], logpath))
+
