@@ -115,6 +115,30 @@ class GetFilenames(object):
 ################################################################################
 #                      Flow.Monitor  Module
 ################################################################################
+def init_logger():
+    # recorder logger setting
+    logger_recorder = logging.getLogger('saisei.flow.recorder')
+    logger_recorder.setLevel(logging.INFO)
+    logger_monitor = logging.getLogger('saisei.flow.recorder.monitor')
+    logger_monitor.setLevel(logging.INFO)
+    logger_common = logging.getLogger('saisei.flow.recorder.common')
+    logger_common.setLevel(logging.INFO)
+
+    handler = logging.FileHandler(SCRIPT_MON_LOG_FILE)
+    handler.setLevel(logging.INFO)
+    filter = logging.Filter('saisei.flow')
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    handler.addFilter(filter)
+
+    logger_recorder.addHandler(handler)
+    logger_recorder.addFilter(filter)
+    logger_monitor.addHandler(handler)
+    logger_monitor.addFilter(filter)
+    logger_common.addHandler(handler)
+    logger_common.addFilter(filter)
+
 def get_filename(filenames):
     if iter(filenames) is iter(filenames):  # deny interator!!
         raise TypeError('Must supply a container')
@@ -187,6 +211,7 @@ def logrotate(logfilepath, logsize):
             err_file = open(logfilepath, 'w')
             err_file.close()
             logger_monitor.info("File is generated again because of size({})".format(str(logsize)))
+            init_logger()
     except Exception as e:
         logger_monitor.error("logrotate() cannot be executed, {}".format(e))
         pass
@@ -450,7 +475,7 @@ def get_process_count(process_name):
 # Check if current process is working or not.
 def compare_process_count(curTime, process_name, recorder_process_count, monitor_process_count):
     try:
-        if recorder_process_count == "1\n":
+        if recorder_process_count == "1\n" or recorder_process_count == "2\n":
             if not os.path.isfile(SCRIPT_MON_LOG_FILE):
                 err_file = open(SCRIPT_MON_LOG_FILE, 'w')
                 err_file.close()
