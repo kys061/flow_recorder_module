@@ -471,7 +471,7 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
             else:
                 monlog_size = get_logsize()
                 if monlog_size > LOGSIZE:
-                    logrotate(monlog_size)
+                    logrotate(SCRIPT_MON_LOG_FILE, monlog_size)
                 logger_monitor.info("Flow {} process is not running, will restart it".format(SCRIPT_FILENAME))
                 do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
                 logger_monitor.info("Flow {} process was restarted.".format(SCRIPT_FILENAME))
