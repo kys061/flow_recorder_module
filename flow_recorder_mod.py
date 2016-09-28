@@ -54,6 +54,7 @@ pattern = r'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
 pattern_01 = r'[-]{1,10}'
 pattern_03 = r'\s+\n'
 pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
+pattern_05 = r'[,\s+]{23}'
 #
 is_extracted = False
 #
@@ -1323,13 +1324,17 @@ successfully!'.format(intf, self._txt_logfilepath))
             csv_data_row = re.sub(pattern, "", csv_data_row)
             csv_data_row = re.sub(pattern_01, "", csv_data_row)
             csv_data_row = re.sub(pattern_02, "", csv_data_row)
-            csv_data_row = re.sub(pattern_03, "\r\n", csv_data_row)
+            csv_data_row = re.sub(pattern_03, "", csv_data_row)
+            #csv_data_row = re.sub(pattern_05, "", csv_data_row)
             reader = csv.DictReader(itertools.islice(csv_data_row.splitlines(),
                                                      2, None),
                                     delimiter=' ',
                                     skipinitialspace=True,
                                     fieldnames=fieldnames)
             for row in reader:
+#                for value in row.values():
+#                    if re.search('\n', value):
+#                        import pdb; pdb.set_trace()  # XXX BREAKPOINT
                 with open(logpath, "a") as fh:
                     fh.write('{},'.format(flow_time))
                     writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
@@ -1339,7 +1344,6 @@ successfully!'.format(intf, self._txt_logfilepath))
             pass
         else:
             if re.search('[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', args[0]):
-                logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
+                logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(args[0], logpath))
             else:
                 logger_recorder.info('Flow info default from interfaces {} is extracted to {} successfully!'.format(args[0], logpath))
-
