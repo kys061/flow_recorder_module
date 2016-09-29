@@ -152,7 +152,8 @@ def delete_file(dirpath, filenames):
     if iter(filenames) is iter(filenames):  # deny interator!!
         raise TypeError('Must supply a container')
     for filename in filenames:
-        os.remove(dirpath + "/" + filename)
+        if os.path.isfile(dirpath + "/" + filename):
+            os.remove(dirpath + "/" + filename)
     if os.path.isdir(dirpath):
         os.rmdir(dirpath)
 
@@ -162,11 +163,12 @@ def compress_file(dirpath, filenames):
     try:
         wtar = tarfile.open(dirpath+'.tar.gz', mode='w:gz')
         for filename in filenames:
-            wtar.add(dirpath+'/'+filename)
+            if os.path.isfile(dirpath + "/" + filename):
+                wtar.add(dirpath+'/'+filename)
     except Exception as e:
         logger_monitor.error("compress_file() cannot be executed, {}".format(e))
         pass
-    else:
+    finally:
         wtar.close()
 
 
@@ -262,8 +264,8 @@ def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_f
     else:
         logger_monitor.info("Compress option is {}, in order to compress folders, please set do_compress as True.".format(do_compress))
 
+    # delete tarfile
     try:
-       # delete tarfile
         for i in range(len(_delete_file_path)):
             if (os.path.isfile(_delete_file_path[i])):
                 os.remove(_delete_file_path[i])
@@ -273,8 +275,8 @@ def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_f
     else:
         logger_monitor.info("{} is deleted successfully!".format(_delete_file_path[i]))
 
+    # delete files archive period ago
     try:
-        # delete files archive period ago
         for dirpath in delete_path:
             filenames = GetFilenames(dirpath) # get filnames from class
             delete_file(dirpath, filenames)
