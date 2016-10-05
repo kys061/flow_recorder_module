@@ -55,6 +55,7 @@ pattern_01 = r'[-]{1,10}'
 pattern_03 = r'\s+\n'
 pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
 pattern_05 = r'[,\s+]{23}'
+pattern_06 = r'Flows at '
 #
 is_extracted = False
 #
@@ -453,7 +454,8 @@ def archive_rotate_mod(do_compress, archive_period):
 # Execute flow_recorder.py script.
 def do_flow_recorder(script_name_path, curTime, process_name):
     try:
-        cmd = "sudo " + script_name_path + " &"
+        cmd = script_name_path + " &"
+#        cmd = "sudo " + script_name_path + " &"
         subprocess.Popen(cmd,
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE,
@@ -657,6 +659,7 @@ class Flowrecorder:
                         #fh.write('\r\n')
                     #time.sleep(1)
                     self.parse_data_by_host(raw_data[0], record_file_type, intf)
+                    self.record_total(raw_data[0], record_file_type, intf)
                     #logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(intf, FLOW_USER_LOG_FOLDER))
             else:
                 raw_data = subprocess_open(self._cmd)
@@ -668,6 +671,7 @@ class Flowrecorder:
                     logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
                 else:
                     self.parse_data_by_host(raw_data[0], record_file_type, intf)
+                    self.record_total(raw_data[0], record_file_type, intf)
                     #logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(intf, FLOW_USER_LOG_FOLDER))
         except Exception as e:
             logger_recorder.error("do_csv_log() cannot be executed, {}".format(e))
@@ -686,21 +690,22 @@ class Flowrecorder:
             for cidr in data:
                 result[cidr] = str(cidr)
         return result
+
 ################################################################################
-#       all users CMD TYPE 2
+#      Def : extract total from the cmd
 ################################################################################
-    def parse_data_by_host(self, raw_data, record_file_type, *args):
+    def record_total(self, raw_data, record_file_type, *args):
         """
-        def parse is the function that parses raw data from the shell into csv and txt
-        csv_data_row is the raw data,
-        csv_filepath is the path for csv,
-        save_csv_users_folder is the path for users(srchost or dsthost)
+        DEF record_total is the function that records file from the cmd into csv and txt
+        raw_data_row - the raw data,
+        record_file_type - type for txt or csv,
+        args[0] - interface name
         """
         try:
             m = re.search(pattern, raw_data)
             startidx = m.start()
             endidx = m.end()
-            csv_time = raw_data[startidx:endidx]
+            flow_time = raw_data[startidx:endidx]
 
             # Get fieldnames
             fieldnames = parse_fieldnames(raw_data)
@@ -713,9 +718,14 @@ class Flowrecorder:
             raw_data = re.sub(pattern, "", raw_data)
             raw_data = re.sub(pattern_01, "", raw_data)
             raw_data = re.sub(pattern_02, "", raw_data)
-            raw_data = re.sub(pattern_03, "\r\n", raw_data)
-            reader = csv.DictReader(itertools.islice(raw_data.splitlines(), 1,
-                                                     None),
+            raw_data = re.sub(pattern_03, "", raw_data)
+            raw_data = re.sub(pattern_06, "", raw_data)
+#            reader = csv.DictReader(itertools.islice(raw_data.splitlines(), 0,
+#                                                     None),
+#                                    delimiter=' ',
+#                                    skipinitialspace=True,
+#                                    fieldnames=fieldnames)
+            reader = csv.DictReader(raw_data.splitlines(),
                                     delimiter=' ',
                                     skipinitialspace=True,
                                     fieldnames=fieldnames)
@@ -732,13 +742,13 @@ class Flowrecorder:
                 values = []
                 for label in fieldnames:
                     values.append(row[label])
-                middles = []
 
     #            value = []
     #            for label in fieldnames:
     #                value.append(row[label])
     #            print value
 
+                middles = []
                 for label in labels:
                     middles.append('='*len(label))
 
@@ -753,10 +763,180 @@ class Flowrecorder:
                     valueLine.append('{0:<{1}}'.format(value, padding))
                 # Add datetime
                 timestamp = 'timestamp'
-                labelLine.insert(0, '{0:<{1}}'.format(timestamp, len(str(csv_time))))
-                middleLine.insert(0, '{0:<{1}}'.format('='*len(timestamp), len(str(csv_time))))
-                valueLine.insert(0, '{0:<{1}}'.format(csv_time, len(str(csv_time))))
+                labelLine.insert(0, '{0:<{1}}'.format(timestamp, len(str(flow_time))))
+                middleLine.insert(0, '{0:<{1}}'.format('='*len(timestamp), len(str(flow_time))))
+                valueLine.insert(0, '{0:<{1}}'.format(flow_time, len(str(flow_time))))
 
+                # record_file_type = 0 : csv, 1 : txt, 2 : both
+                if record_file_type == 1 or record_file_type == 2:
+################################################################################
+#      record total for txt
+################################################################################
+                    if not re.search('source_host|dest_host', self._cmd):
+                        if not (os.path.isfile(self._txt_logfilepath)):
+                            txt_file = open(self._txt_logfilepath, 'w')
+                            txt_file.close()
+                            if count_values >= 1 or count_values < len(result)+1:
+                                with open(self._txt_logfilepath, "a") as fh:
+                                    fh.write('    '.join(labelLine) + '\r\n')
+                                    #fh.write('    '.join(middleLine) + '\r\n')
+                            with open(self._txt_logfilepath, "a") as fh:
+                                fh.write('    '.join(valueLine)+'\r\n')
+                            count_values += 1
+
+                            if count_values == len(result)+1:
+                                count_values = 1
+                        else:
+                            with open(self._txt_logfilepath, "a") as fh:
+                                fh.write('    '.join(valueLine)+'\r\n')
+                            count_values += 1
+                            if count_values == len(result)+1:
+                                count_values = 1
+                # record_file_type = 0 : csv, 1 : txt, 2 : both
+                if record_file_type == 0 or record_file_type == 2:
+################################################################################
+#      record total for csv
+################################################################################
+                    if not re.search('source_host|dest_host', self._cmd):
+                        if not (os.path.isfile(self._csv_logfilepath)):
+                            csv_file = open(self._csv_logfilepath, 'w')
+                            csv_file.close()
+                            with open(self._csv_logfilepath, "a") as fh:
+                                fh.write(','.join(fieldnames))
+                                fh.write('\n')
+                                fh.write('{},'.format(flow_time))
+                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                writer.writerow(row)
+                        else:
+                            with open(self._csv_logfilepath, "a") as fh:
+                                fh.write('{},'.format(flow_time))
+                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                writer.writerow(row)
+        except Exception as e:
+            logger_recorder.error("record_total() cannot be executed, {}".format(e))
+            pass
+        else:
+            logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._txt_logfilepath))
+            logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._csv_logfilepath))
+#
+################################################################################
+#       Def : all users CMD TYPE 2
+################################################################################
+    def parse_data_by_host(self, raw_data, record_file_type, *args):
+        """
+        DEF parse_data_by_host is the function that parses the raw_data and
+        record data into csv and txt files.
+        raw_data_row - raw data,
+        record_file_type -  type for txt or csv,
+        args[0] - interface name
+        """
+        try:
+            m = re.search(pattern, raw_data)
+            startidx = m.start()
+            endidx = m.end()
+            flow_time = raw_data[startidx:endidx]
+
+            # Get fieldnames
+            fieldnames = parse_fieldnames(raw_data)
+
+            # Make field pattern
+            pattern_02 = ''
+            for field in fieldnames:
+                pattern_02 += field+"|"
+
+            raw_data = re.sub(pattern, "", raw_data)
+            raw_data = re.sub(pattern_01, "", raw_data)
+            raw_data = re.sub(pattern_02, "", raw_data)
+            raw_data = re.sub(pattern_03, "", raw_data)
+            raw_data = re.sub(pattern_06, "", raw_data)
+#            reader = csv.DictReader(itertools.islice(raw_data.splitlines(), 0,
+#                                                     None),
+#                                    delimiter=' ',
+#                                    skipinitialspace=True,
+#                                    fieldnames=fieldnames)
+            reader = csv.DictReader(raw_data.splitlines(),
+                                    delimiter=' ',
+                                    skipinitialspace=True,
+                                    fieldnames=fieldnames)
+
+            result = sorted(reader, key=lambda d: d['srchost'])
+            #include = self._include
+            #include_subnet_tree = makeSubnetTree('INCLUDE')
+            # for
+            count_values = 1
+            labels = []
+            labels = fieldnames
+            # do log for the users
+            for row in result:
+                values = []
+                for label in fieldnames:
+                    values.append(row[label])
+
+    #            value = []
+    #            for label in fieldnames:
+    #                value.append(row[label])
+    #            print value
+
+                middles = []
+                for label in labels:
+                    middles.append('='*len(label))
+
+                labelLine = list()
+                middleLine = list()
+                valueLine = list()
+
+                for label, middle, value in zip(labels, middles, values):
+                    padding = max(len(str(label)), len(str(value)))
+                    labelLine.append('{0:<{1}}'.format(label, padding))  # generate a string with the variable whitespace padding
+                    middleLine.append('{0:<{1}}'.format(middle, padding))
+                    valueLine.append('{0:<{1}}'.format(value, padding))
+                # Add datetime
+                timestamp = 'timestamp'
+                labelLine.insert(0, '{0:<{1}}'.format(timestamp, len(str(flow_time))))
+                middleLine.insert(0, '{0:<{1}}'.format('='*len(timestamp), len(str(flow_time))))
+                valueLine.insert(0, '{0:<{1}}'.format(flow_time, len(str(flow_time))))
+################################################################################
+#      record total for txt
+################################################################################
+#                if not re.search('source_host|dest_host', self._cmd):
+#                    if not (os.path.isfile(self._txt_logfilepath)):
+#                        txt_file = open(self._txt_logfilepath, 'w')
+#                        txt_file.close()
+#                        if count_values >= 1 or count_values < len(result)+1:
+#                            with open(self._txt_logfilepath, "a") as fh:
+#                                fh.write('    '.join(labelLine) + '\r\n')
+#                                #fh.write('    '.join(middleLine) + '\r\n')
+#                        with open(self._txt_logfilepath, "a") as fh:
+#                            fh.write('    '.join(valueLine)+'\r\n')
+#                        count_values += 1
+#
+#                        if count_values == len(result)+1:
+#                            count_values = 1
+#                    else:
+#                        with open(self._txt_logfilepath, "a") as fh:
+#                            fh.write('    '.join(valueLine)+'\r\n')
+#                        count_values += 1
+#                        if count_values == len(result)+1:
+#                            count_values = 1
+#################################################################################
+##      record total for csv
+#################################################################################
+#                if not re.search('source_host|dest_host', self._cmd):
+#                    if not (os.path.isfile(self._csv_logfilepath)):
+#                        csv_file = open(self._csv_logfilepath, 'w')
+#                        csv_file.close()
+#                        with open(self._csv_logfilepath, "a") as fh:
+#                            fh.write(','.join(fieldnames))
+#                            fh.write('\n')
+#                            fh.write('{},'.format(flow_time))
+#                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+#                            writer.writerow(row)
+#                    else:
+#                        with open(self._csv_logfilepath, "a") as fh:
+#                            fh.write('{},'.format(flow_time))
+#                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+#                            writer.writerow(row)
+################################################################################
     #            if count_values == 1:
     #                print ('{} length of each result -> {}\r'.format(title_time, len(result)))
     #                print ('\t'.join(labelLine) + '\r')
@@ -785,12 +965,12 @@ class Flowrecorder:
                                 with open(flowlog_csv_by_dsthost_path, "a") as fh:
                                     fh.write(','.join(fieldnames))
                                     fh.write('\r\n')
-                                    fh.write('{},'.format(csv_time))
+                                    fh.write('{},'.format(flow_time))
                                     writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                     writer.writerow(row)
                             else:
                                 with open(flowlog_csv_by_dsthost_path, "a") as fh:
-                                    fh.write('{},'.format(csv_time))
+                                    fh.write('{},'.format(flow_time))
                                     writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                     writer.writerow(row)
 ################################################################################
@@ -833,12 +1013,12 @@ class Flowrecorder:
                                 with open(flowlog_csv_by_srchost_path, "a") as fh:
                                     fh.write(','.join(fieldnames))
                                     fh.write('\r\n')
-                                    fh.write('{},'.format(csv_time))
+                                    fh.write('{},'.format(flow_time))
                                     writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                     writer.writerow(row)
                             else:
                                 with open(flowlog_csv_by_srchost_path, "a") as fh:
-                                    fh.write('{},'.format(csv_time))
+                                    fh.write('{},'.format(flow_time))
                                     writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                     writer.writerow(row)
 ################################################################################
@@ -872,6 +1052,82 @@ class Flowrecorder:
             pass
         else:
             logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(args[0], FLOW_USER_LOG_FOLDER))
+#
+#    def record_txt(self):
+#        raw_data_for_field = subprocess_open(self._cmd_for_field)
+#        # ERR Routine
+#        if 'Cannot connect to server' in raw_data_for_field[0]:
+#            logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data_for_field[0]))
+#        elif 'does not exist' in raw_data_for_field[0]:
+#            logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data_for_field[0]))
+#        elif 'no matching objects' in raw_data_for_field[0]:
+#            logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data_for_field[0]))
+#        elif raw_data_for_field[0] != '' and raw_data_for_field[0] != '\n':
+#            fieldnames = parse_fieldnames(raw_data_for_field[0])
+#            pattern_02 = ''
+#            for field in fieldnames:
+#                pattern_02 += field+"|"
+#        txt = re.search('stm[0-9]+',self._txt_logfilepath)
+#        intf = self._txt_logfilepath[txt.start():txt.end()]
+#
+#        if not re.search('source_host|dest_host', self._cmd):
+#            if not (os.path.isfile(self._txt_logfilepath)):
+#                create_folder(self._foldername)
+#                txt_file = open(self._txt_logfilepath, 'w')
+#                txt_file.close()
+#
+#                raw_data = subprocess_open(self._cmd)
+#                txt_data = raw_data[0]
+#                m = re.search(pattern, txt_data)
+#                startidx = m.start()
+#                endidx = m.end()
+#                flow_time = txt_data[startidx:endidx]
+#
+#                txt_data = re.sub(pattern, "", txt_data)
+#                txt_data = re.sub(pattern_01, "", txt_data)
+#                txt_data = re.sub(pattern_02, "", txt_data)
+#                txt_data = re.sub(pattern_03, "", txt_data)
+#                reader = csv.DictReader(itertools.islice(txt_data.splitlines(), 1,
+#                                                            None),
+#                                        delimiter=' ',
+#                                        skipinitialspace=True,
+#                                        fieldnames=fieldnames)
+#
+#                for row in reader:
+#                    with open(self._txt_logfilepath, "a") as fh:
+#                        if not fieldnames[1] in row:
+#                            fh.write('{}\t'.format(flow_time))
+#                            fh.write('{}'.format(row))
+#                        else:
+#                            fh.write('timestamp\t\t')
+#                            fh.write('{}'.format(row))
+#            else:
+#                raw_data = subprocess_open(self._cmd)
+#                txt_data = raw_data[0]
+#                m = re.search(pattern, txt_data)
+#                startidx = m.start()
+#                endidx = m.end()
+#                flow_time = txt_data[startidx:endidx]
+#
+#                txt_data = re.sub(pattern, "", txt_data)
+#                txt_data = re.sub(pattern_01, "", txt_data)
+#                txt_data = re.sub(pattern_02, "", txt_data)
+#                txt_data = re.sub(pattern_03, "", txt_data)
+#                reader = csv.DictReader(itertools.islice(txt_data.splitlines(), 1,
+#                                                            None),
+#                                        delimiter=' ',
+#                                        skipinitialspace=True,
+#                                        fieldnames=fieldnames)
+#
+#                for row in reader:
+#                    with open(self._txt_logfilepath, "a") as fh:
+#                        if not fieldnames[1] in row:
+#                            fh.write('{}\t'.format(flow_time))
+#                            fh.write('{}'.format(row))
+#                        else:
+#                            fh.write('timestamp\t\t')
+#                            fh.write('{}'.format(row))
+
 
 ################################################################################
 #       Write the txt type log from the command type 3
