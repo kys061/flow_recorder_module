@@ -950,103 +950,103 @@ class Flowrecorder:
 ################################################################################
 #       EXTERNAL, this case, stm9
 ################################################################################
-                if row['in_if'] == self._ex_interface:
-                    if row['dsthost'] in self._include_subnet_tree:
-                        flowlog_csv_by_dsthost_path = self._logfolderpath + row['dsthost'] + '-' + row['in_if'] + '-inbound.csv'
-                        flowlog_txt_by_dsthost_path = self._logfolderpath + row['dsthost'] + '-' + row['in_if'] + '-inbound.txt'
+                for ex_int in self._ex_interface:
+                    if row['in_if'] == ex_int:
+                        if row['dsthost'] in self._include_subnet_tree:
+                            flowlog_csv_by_dsthost_path = self._logfolderpath + row['dsthost'] + '-' + row['in_if'] + '-inbound.csv'
+                            flowlog_txt_by_dsthost_path = self._logfolderpath + row['dsthost'] + '-' + row['in_if'] + '-inbound.txt'
 ################################################################################
 #       Parse CSV if row's in_if is STM9 and record_file_type = 0 : csv, 1 : txt
 #       2 : both
 ################################################################################
-                        if record_file_type == 0 or record_file_type == 2:
-                            if not (os.path.isfile(flowlog_csv_by_dsthost_path)):
-                                csv_file = open(flowlog_csv_by_dsthost_path, 'w')
-                                csv_file.close()
-                                with open(flowlog_csv_by_dsthost_path, "a") as fh:
-                                    fh.write(','.join(fieldnames))
-                                    fh.write('\r\n')
-                                    fh.write('{},'.format(flow_time))
-                                    writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                    writer.writerow(row)
-                            else:
-                                with open(flowlog_csv_by_dsthost_path, "a") as fh:
-                                    fh.write('{},'.format(flow_time))
-                                    writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                    writer.writerow(row)
+                            if record_file_type == 0 or record_file_type == 2:
+                                if not (os.path.isfile(flowlog_csv_by_dsthost_path)):
+                                    csv_file = open(flowlog_csv_by_dsthost_path, 'w')
+                                    csv_file.close()
+                                    with open(flowlog_csv_by_dsthost_path, "a") as fh:
+                                        fh.write(','.join(fieldnames))
+                                        fh.write('\r\n')
+                                        fh.write('{},'.format(flow_time))
+                                        writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                        writer.writerow(row)
+                                else:
+                                    with open(flowlog_csv_by_dsthost_path, "a") as fh:
+                                        fh.write('{},'.format(flow_time))
+                                        writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                        writer.writerow(row)
 ################################################################################
 #       Parse TXT if row's in_if is STM9
 ################################################################################
-                        if record_file_type == 1 or record_file_type == 2:
-                            if not (os.path.isfile(flowlog_txt_by_dsthost_path)):
-                                txt_file = open(flowlog_txt_by_dsthost_path, 'w')
-                                txt_file.close()
-                                if count_values >= 1 or count_values < len(result)+1:
+                            if record_file_type == 1 or record_file_type == 2:
+                                if not (os.path.isfile(flowlog_txt_by_dsthost_path)):
+                                    txt_file = open(flowlog_txt_by_dsthost_path, 'w')
+                                    txt_file.close()
+                                    if count_values >= 1 or count_values < len(result)+1:
+                                        with open(flowlog_txt_by_dsthost_path, "a") as fh:
+                                            fh.write('    '.join(labelLine) + '\r\n')
+                                            #fh.write('    '.join(middleLine) + '\r\n')
                                     with open(flowlog_txt_by_dsthost_path, "a") as fh:
-                                        fh.write('    '.join(labelLine) + '\r\n')
-                                        #fh.write('    '.join(middleLine) + '\r\n')
-                                with open(flowlog_txt_by_dsthost_path, "a") as fh:
-                                    fh.write('    '.join(valueLine)+'\r\n')
-                                count_values += 1
+                                        fh.write('    '.join(valueLine)+'\r\n')
+                                    count_values += 1
 
-                                if count_values == len(result)+1:
-                                    count_values = 1
-                            else:
-                                with open(flowlog_txt_by_dsthost_path, "a") as fh:
-                                    fh.write('    '.join(valueLine)+'\r\n')
-                                count_values += 1
-                                if count_values == len(result)+1:
-                                    count_values = 1
+                                    if count_values == len(result)+1:
+                                        count_values = 1
+                                else:
+                                    with open(flowlog_txt_by_dsthost_path, "a") as fh:
+                                        fh.write('    '.join(valueLine)+'\r\n')
+                                    count_values += 1
+                                    if count_values == len(result)+1:
+                                        count_values = 1
 ################################################################################
 #       INTERNAL, this case, stm10
 ################################################################################
-                elif row['in_if'] == self._in_interface:
-                    if row['srchost'] in self._include_subnet_tree:
-                        flowlog_csv_by_srchost_path = self._logfolderpath + row['srchost'] + '-' + row['in_if'] + '-outbound.csv'
-                        flowlog_txt_by_srchost_path = self._logfolderpath + row['srchost'] + '-' + row['in_if'] + '-outbound.txt'
+                for in_int in self._in_interface:
+                    if row['in_if'] == in_int:
+                        if row['srchost'] in self._include_subnet_tree:
+                            flowlog_csv_by_srchost_path = self._logfolderpath + row['srchost'] + '-' + row['in_if'] + '-outbound.csv'
+                            flowlog_txt_by_srchost_path = self._logfolderpath + row['srchost'] + '-' + row['in_if'] + '-outbound.txt'
 ################################################################################
 #       Parse CSV if row's in_if is STM10
 ################################################################################
-                        if record_file_type == 0 or record_file_type == 2:
-                            if not (os.path.isfile(flowlog_csv_by_srchost_path)):
-                                csv_file = open(flowlog_csv_by_srchost_path, 'w')
-                                csv_file.close()
-                                with open(flowlog_csv_by_srchost_path, "a") as fh:
-                                    fh.write(','.join(fieldnames))
-                                    fh.write('\r\n')
-                                    fh.write('{},'.format(flow_time))
-                                    writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                    writer.writerow(row)
-                            else:
-                                with open(flowlog_csv_by_srchost_path, "a") as fh:
-                                    fh.write('{},'.format(flow_time))
-                                    writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                    writer.writerow(row)
+                            if record_file_type == 0 or record_file_type == 2:
+                                if not (os.path.isfile(flowlog_csv_by_srchost_path)):
+                                    csv_file = open(flowlog_csv_by_srchost_path, 'w')
+                                    csv_file.close()
+                                    with open(flowlog_csv_by_srchost_path, "a") as fh:
+                                        fh.write(','.join(fieldnames))
+                                        fh.write('\r\n')
+                                        fh.write('{},'.format(flow_time))
+                                        writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                        writer.writerow(row)
+                                else:
+                                    with open(flowlog_csv_by_srchost_path, "a") as fh:
+                                        fh.write('{},'.format(flow_time))
+                                        writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                        writer.writerow(row)
 ################################################################################
 #       Parse TXT if row's in_if is STM10
 ################################################################################
-                        if record_file_type == 1 or record_file_type == 2:
-                            if not (os.path.isfile(flowlog_txt_by_srchost_path)):
-                                txt_file = open(flowlog_txt_by_srchost_path, 'w')
-                                txt_file.close()
-                                if count_values >= 1 or count_values < len(result)+1:
+                            if record_file_type == 1 or record_file_type == 2:
+                                if not (os.path.isfile(flowlog_txt_by_srchost_path)):
+                                    txt_file = open(flowlog_txt_by_srchost_path, 'w')
+                                    txt_file.close()
+                                    if count_values >= 1 or count_values < len(result)+1:
+                                        with open(flowlog_txt_by_srchost_path, "a") as output:
+                                            output.write('    '.join(labelLine) + '\r\n')
+                                            #output.write('    '.join(middleLine) + '\r\n')
                                     with open(flowlog_txt_by_srchost_path, "a") as output:
-                                        output.write('    '.join(labelLine) + '\r\n')
-                                        #output.write('    '.join(middleLine) + '\r\n')
-                                with open(flowlog_txt_by_srchost_path, "a") as output:
-                                    output.write('    '.join(valueLine)+'\r\n')
-                                count_values += 1
+                                        output.write('    '.join(valueLine)+'\r\n')
+                                    count_values += 1
 
-                                if count_values == len(result)+1:
-                                    count_values = 1
-                            else:
-                                with open(flowlog_txt_by_srchost_path, "a") as output:
-                                    output.write('    '.join(valueLine)+'\r\n')
-                                count_values += 1
+                                    if count_values == len(result)+1:
+                                        count_values = 1
+                                else:
+                                    with open(flowlog_txt_by_srchost_path, "a") as output:
+                                        output.write('    '.join(valueLine)+'\r\n')
+                                    count_values += 1
 
-                                if count_values == len(result)+1:
-                                    count_values = 1
-                else:
-                    pass
+                                    if count_values == len(result)+1:
+                                        count_values = 1
         except Exception as e:
             logger_recorder.error("parse_data_by_host() cannot be executed, {}".format(e))
             pass
