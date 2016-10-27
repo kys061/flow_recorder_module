@@ -10,6 +10,7 @@ import logging
 import tarfile
 import pandas as pd
 from SubnetTree import SubnetTree
+from tabulate import tabulate
 
 # Init path and filename
 FLOW_LOG_FOLDER_PATH = r'/var/log/flows'
@@ -836,6 +837,7 @@ class Flowrecorder:
             m = re.search(pattern, raw_data)
             startidx = m.start()
             endidx = m.end()
+
             flow_time = raw_data[startidx:endidx]
 
             # Get fieldnames
@@ -868,8 +870,37 @@ class Flowrecorder:
             count_values = 1
             labels = []
             labels = fieldnames
+################################################################################
+            #df = pd.DataFrame()
+            fieldnames.insert(0, 'timestamp')
+            count_df = 0
+            path = r'/home/saisei/test/test.txt'
+################################################################################
             # do log for the users
             for row in result:
+###############################################################################
+                row['timestamp'] = flow_time
+
+                if count_df == 0:
+                    df = pd.DataFrame(row, columns=fieldnames, index=[''])
+                    count_df += 1
+                else:
+                    df = df.append(pd.DataFrame(row, columns=fieldnames, index=['']), ignore_index=True)
+                    count_df += 1
+                if count_df == len(result):
+                    if os.path.isfile(path):
+                        with open(path, 'a') as fh:
+                            fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+                            fh.write('\n')
+                    else:
+                        test_file = open(path, 'w')
+                        test_file.close()
+                        with open(path, 'a') as fh:
+                            fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
+                            fh.write('\n')
+#                    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+
+################################################################################
                 values = []
                 for label in fieldnames:
                     values.append(row[label])
@@ -1054,6 +1085,7 @@ class Flowrecorder:
             logger_recorder.error("parse_data_by_host() cannot be executed, {}".format(e))
             pass
         else:
+            import pdb; pdb.set_trace()  # XXX BREAKPOINT
             logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(args[0], FLOW_USER_LOG_FOLDER))
 #
 #    def record_txt(self):
