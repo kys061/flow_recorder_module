@@ -740,66 +740,43 @@ class Flowrecorder:
             count_values = 1
             labels = []
             labels = fieldnames
+################################################################################
+            #df = pd.DataFrame()
+            fieldnames.insert(0, 'timestamp')
+            count_df = 0
+################################################################################
             # do log for the users
             for row in result:
-                values = []
-                for label in fieldnames:
-                    values.append(row[label])
-
-    #            value = []
-    #            for label in fieldnames:
-    #                value.append(row[label])
-    #            print value
-
-                middles = []
-                for label in labels:
-                    middles.append('='*len(label))
-
-                labelLine = list()
-                middleLine = list()
-                valueLine = list()
-
-                for label, middle, value in zip(labels, middles, values):
-                    padding = max(len(str(label)), len(str(value)))
-                    labelLine.append('{0:<{1}}'.format(label, padding))  # generate a string with the variable whitespace padding
-                    middleLine.append('{0:<{1}}'.format(middle, padding))
-                    valueLine.append('{0:<{1}}'.format(value, padding))
-                # Add datetime
-                timestamp = 'timestamp'
-                labelLine.insert(0, '{0:<{1}}'.format(timestamp, len(str(flow_time))))
-                middleLine.insert(0, '{0:<{1}}'.format('='*len(timestamp), len(str(flow_time))))
-                valueLine.insert(0, '{0:<{1}}'.format(flow_time, len(str(flow_time))))
-
-                # record_file_type = 0 : csv, 1 : txt, 2 : both
-                if record_file_type == 1 or record_file_type == 2:
 ################################################################################
 #      record total for txt
 ################################################################################
-                    if not re.search('source_host|dest_host', self._cmd):
-                        if not (os.path.isfile(self._txt_logfilepath)):
-                            txt_file = open(self._txt_logfilepath, 'w')
-                            txt_file.close()
-                            if count_values >= 1 or count_values < len(result)+1:
-                                with open(self._txt_logfilepath, "a") as fh:
-                                    fh.write('    '.join(labelLine) + '\r\n')
-                                    #fh.write('    '.join(middleLine) + '\r\n')
-                            with open(self._txt_logfilepath, "a") as fh:
-                                fh.write('    '.join(valueLine)+'\r\n')
-                            count_values += 1
-
-                            if count_values == len(result)+1:
-                                count_values = 1
-                        else:
-                            with open(self._txt_logfilepath, "a") as fh:
-                                fh.write('    '.join(valueLine)+'\r\n')
-                            count_values += 1
-                            if count_values == len(result)+1:
-                                count_values = 1
                 # record_file_type = 0 : csv, 1 : txt, 2 : both
-                if record_file_type == 0 or record_file_type == 2:
+                if record_file_type == 1 or record_file_type == 2:
+                    if not re.search('source_host|dest_host', self._cmd):
+                        row['timestamp'] = flow_time
+
+                        if count_df == 0:
+                            df = pd.DataFrame(row, columns=fieldnames, index=[''])
+                            count_df += 1
+                        else:
+                            df = df.append(pd.DataFrame(row, columns=fieldnames, index=['']), ignore_index=True)
+                            count_df += 1
+                        if count_df == len(result):
+                            if os.path.isfile(self._txt_logfilepath):
+                                with open(self._txt_logfilepath, 'a') as fh:
+                                    fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+                                    fh.write('\n')
+                            else:
+                                test_file = open(self._txt_logfilepath, 'w')
+                                test_file.close()
+                                with open(self._txt_logfilepath, 'a') as fh:
+                                    fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
+                                    fh.write('\n')
 ################################################################################
 #      record total for csv
 ################################################################################
+                # record_file_type = 0 : csv, 1 : txt, 2 : both
+                if record_file_type == 0 or record_file_type == 2:
                     if not re.search('source_host|dest_host', self._cmd):
                         if not (os.path.isfile(self._csv_logfilepath)):
                             csv_file = open(self._csv_logfilepath, 'w')
@@ -819,8 +796,10 @@ class Flowrecorder:
             logger_recorder.error("record_total() cannot be executed, {}".format(e))
             pass
         else:
-            logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._txt_logfilepath))
-            logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._csv_logfilepath))
+            if record_file_type == 1 or record_file_type == 2:
+                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._txt_logfilepath))
+            if record_file_type == 0 or record_file_type == 2:
+                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._csv_logfilepath))
 #
 ################################################################################
 #       Def : all users CMD TYPE 2
@@ -874,112 +853,9 @@ class Flowrecorder:
             #df = pd.DataFrame()
             fieldnames.insert(0, 'timestamp')
             count_df = 0
-            path = r'/home/saisei/test/test.txt'
 ################################################################################
             # do log for the users
             for row in result:
-###############################################################################
-                row['timestamp'] = flow_time
-
-                if count_df == 0:
-                    df = pd.DataFrame(row, columns=fieldnames, index=[''])
-                    count_df += 1
-                else:
-                    df = df.append(pd.DataFrame(row, columns=fieldnames, index=['']), ignore_index=True)
-                    count_df += 1
-                if count_df == len(result):
-                    if os.path.isfile(path):
-                        with open(path, 'a') as fh:
-                            fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                            fh.write('\n')
-                    else:
-                        test_file = open(path, 'w')
-                        test_file.close()
-                        with open(path, 'a') as fh:
-                            fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-                            fh.write('\n')
-#                    import pdb; pdb.set_trace()  # XXX BREAKPOINT
-
-################################################################################
-                values = []
-                for label in fieldnames:
-                    values.append(row[label])
-
-    #            value = []
-    #            for label in fieldnames:
-    #                value.append(row[label])
-    #            print value
-
-                middles = []
-                for label in labels:
-                    middles.append('='*len(label))
-
-                labelLine = list()
-                middleLine = list()
-                valueLine = list()
-
-                for label, middle, value in zip(labels, middles, values):
-                    padding = max(len(str(label)), len(str(value)))
-                    labelLine.append('{0:<{1}}'.format(label, padding))  # generate a string with the variable whitespace padding
-                    middleLine.append('{0:<{1}}'.format(middle, padding))
-                    valueLine.append('{0:<{1}}'.format(value, padding))
-                # Add datetime
-                timestamp = 'timestamp'
-                labelLine.insert(0, '{0:<{1}}'.format(timestamp, len(str(flow_time))))
-                middleLine.insert(0, '{0:<{1}}'.format('='*len(timestamp), len(str(flow_time))))
-                valueLine.insert(0, '{0:<{1}}'.format(flow_time, len(str(flow_time))))
-################################################################################
-#      record total for txt
-################################################################################
-#                if not re.search('source_host|dest_host', self._cmd):
-#                    if not (os.path.isfile(self._txt_logfilepath)):
-#                        txt_file = open(self._txt_logfilepath, 'w')
-#                        txt_file.close()
-#                        if count_values >= 1 or count_values < len(result)+1:
-#                            with open(self._txt_logfilepath, "a") as fh:
-#                                fh.write('    '.join(labelLine) + '\r\n')
-#                                #fh.write('    '.join(middleLine) + '\r\n')
-#                        with open(self._txt_logfilepath, "a") as fh:
-#                            fh.write('    '.join(valueLine)+'\r\n')
-#                        count_values += 1
-#
-#                        if count_values == len(result)+1:
-#                            count_values = 1
-#                    else:
-#                        with open(self._txt_logfilepath, "a") as fh:
-#                            fh.write('    '.join(valueLine)+'\r\n')
-#                        count_values += 1
-#                        if count_values == len(result)+1:
-#                            count_values = 1
-#################################################################################
-##      record total for csv
-#################################################################################
-#                if not re.search('source_host|dest_host', self._cmd):
-#                    if not (os.path.isfile(self._csv_logfilepath)):
-#                        csv_file = open(self._csv_logfilepath, 'w')
-#                        csv_file.close()
-#                        with open(self._csv_logfilepath, "a") as fh:
-#                            fh.write(','.join(fieldnames))
-#                            fh.write('\n')
-#                            fh.write('{},'.format(flow_time))
-#                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-#                            writer.writerow(row)
-#                    else:
-#                        with open(self._csv_logfilepath, "a") as fh:
-#                            fh.write('{},'.format(flow_time))
-#                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-#                            writer.writerow(row)
-################################################################################
-    #            if count_values == 1:
-    #                print ('{} length of each result -> {}\r'.format(title_time, len(result)))
-    #                print ('\t'.join(labelLine) + '\r')
-    #                print ('\t'.join(middleLine) + '\n')
-
-    #            print ('\t'.join(valueLine)+'\r')
-    #            count_values += 1
-
-    #            if count_values == len(result)+1:
-    #                count_values = 1
 ################################################################################
 #       EXTERNAL, this case, stm9
 ################################################################################
@@ -990,8 +866,8 @@ class Flowrecorder:
                             flowlog_csv_by_dsthost_path = self._logfolderpath + row['dsthost'] + '-' + row['in_if'] + '-inbound.csv'
                             flowlog_txt_by_dsthost_path = self._logfolderpath + row['dsthost'] + '-' + row['in_if'] + '-inbound.txt'
 ################################################################################
-#       Parse CSV if row's in_if is STM9 and record_file_type = 0 : csv, 1 : txt
-#       2 : both
+#       Parse CSV if row's in_if is STM9 and record_file_type = 0 : csv, 1 :
+#       txt, 2 : both
 ################################################################################
                             if record_file_type == 0 or record_file_type == 2:
                                 if not (os.path.isfile(flowlog_csv_by_dsthost_path)):
@@ -1012,25 +888,25 @@ class Flowrecorder:
 #       Parse TXT if row's in_if is STM9
 ################################################################################
                             if record_file_type == 1 or record_file_type == 2:
-                                if not (os.path.isfile(flowlog_txt_by_dsthost_path)):
-                                    txt_file = open(flowlog_txt_by_dsthost_path, 'w')
-                                    txt_file.close()
-                                    if count_values >= 1 or count_values < len(result)+1:
-                                        with open(flowlog_txt_by_dsthost_path, "a") as fh:
-                                            fh.write('    '.join(labelLine) + '\r\n')
-                                            #fh.write('    '.join(middleLine) + '\r\n')
-                                    with open(flowlog_txt_by_dsthost_path, "a") as fh:
-                                        fh.write('    '.join(valueLine)+'\r\n')
-                                    count_values += 1
+                                row['timestamp'] = flow_time
 
-                                    if count_values == len(result)+1:
-                                        count_values = 1
+                                if count_df == 0:
+                                    df = pd.DataFrame(row, columns=fieldnames, index=[''])
+                                    count_df += 1
                                 else:
-                                    with open(flowlog_txt_by_dsthost_path, "a") as fh:
-                                        fh.write('    '.join(valueLine)+'\r\n')
-                                    count_values += 1
-                                    if count_values == len(result)+1:
-                                        count_values = 1
+                                    df = df.append(pd.DataFrame(row, columns=fieldnames, index=['']), ignore_index=True)
+                                    count_df += 1
+                                if count_df == len(result):
+                                    if os.path.isfile(flowlog_txt_by_dsthost_path):
+                                        with open(flowlog_txt_by_dsthost_path, 'a') as fh:
+                                            fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+                                            fh.write('\n')
+                                    else:
+                                        test_file = open(flowlog_txt_by_dsthost_path, 'w')
+                                        test_file.close()
+                                        with open(flowlog_txt_by_dsthost_path, 'a') as fh:
+                                            fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
+                                            fh.write('\n')
 ################################################################################
 #       INTERNAL, this case, stm10
 ################################################################################
@@ -1061,120 +937,36 @@ class Flowrecorder:
 #       Parse TXT if row's in_if is STM10
 ################################################################################
                             if record_file_type == 1 or record_file_type == 2:
-                                if not (os.path.isfile(flowlog_txt_by_srchost_path)):
-                                    txt_file = open(flowlog_txt_by_srchost_path, 'w')
-                                    txt_file.close()
-                                    if count_values >= 1 or count_values < len(result)+1:
-                                        with open(flowlog_txt_by_srchost_path, "a") as output:
-                                            output.write('    '.join(labelLine) + '\r\n')
-                                            #output.write('    '.join(middleLine) + '\r\n')
-                                    with open(flowlog_txt_by_srchost_path, "a") as output:
-                                        output.write('    '.join(valueLine)+'\r\n')
-                                    count_values += 1
+                                row['timestamp'] = flow_time
 
-                                    if count_values == len(result)+1:
-                                        count_values = 1
+                                if count_df == 0:
+                                    df = pd.DataFrame(row, columns=fieldnames, index=[''])
+                                    count_df += 1
                                 else:
-                                    with open(flowlog_txt_by_srchost_path, "a") as output:
-                                        output.write('    '.join(valueLine)+'\r\n')
-                                    count_values += 1
-
-                                    if count_values == len(result)+1:
-                                        count_values = 1
+                                    df = df.append(pd.DataFrame(row, columns=fieldnames, index=['']), ignore_index=True)
+                                    count_df += 1
+                                if count_df == len(result):
+                                    if os.path.isfile(flowlog_txt_by_srchost_path):
+                                        with open(flowlog_txt_by_srchost_path, 'a') as fh:
+                                            fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+                                            fh.write('\n')
+                                    else:
+                                        test_file = open(flowlog_txt_by_srchost_path, 'w')
+                                        test_file.close()
+                                        with open(flowlog_txt_by_srchost_path, 'a') as fh:
+                                            fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
+                                            fh.write('\n')
         except Exception as e:
             logger_recorder.error("parse_data_by_host() cannot be executed, {}".format(e))
             pass
         else:
-            import pdb; pdb.set_trace()  # XXX BREAKPOINT
             logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(args[0], FLOW_USER_LOG_FOLDER))
-#
-#    def record_txt(self):
-#        raw_data_for_field = subprocess_open(self._cmd_for_field)
-#        # ERR Routine
-#        if 'Cannot connect to server' in raw_data_for_field[0]:
-#            logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data_for_field[0]))
-#        elif 'does not exist' in raw_data_for_field[0]:
-#            logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data_for_field[0]))
-#        elif 'no matching objects' in raw_data_for_field[0]:
-#            logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data_for_field[0]))
-#        elif raw_data_for_field[0] != '' and raw_data_for_field[0] != '\n':
-#            fieldnames = parse_fieldnames(raw_data_for_field[0])
-#            pattern_02 = ''
-#            for field in fieldnames:
-#                pattern_02 += field+"|"
-#        txt = re.search('stm[0-9]+',self._txt_logfilepath)
-#        intf = self._txt_logfilepath[txt.start():txt.end()]
-#
-#        if not re.search('source_host|dest_host', self._cmd):
-#            if not (os.path.isfile(self._txt_logfilepath)):
-#                create_folder(self._foldername)
-#                txt_file = open(self._txt_logfilepath, 'w')
-#                txt_file.close()
-#
-#                raw_data = subprocess_open(self._cmd)
-#                txt_data = raw_data[0]
-#                m = re.search(pattern, txt_data)
-#                startidx = m.start()
-#                endidx = m.end()
-#                flow_time = txt_data[startidx:endidx]
-#
-#                txt_data = re.sub(pattern, "", txt_data)
-#                txt_data = re.sub(pattern_01, "", txt_data)
-#                txt_data = re.sub(pattern_02, "", txt_data)
-#                txt_data = re.sub(pattern_03, "", txt_data)
-#                reader = csv.DictReader(itertools.islice(txt_data.splitlines(), 1,
-#                                                            None),
-#                                        delimiter=' ',
-#                                        skipinitialspace=True,
-#                                        fieldnames=fieldnames)
-#
-#                for row in reader:
-#                    with open(self._txt_logfilepath, "a") as fh:
-#                        if not fieldnames[1] in row:
-#                            fh.write('{}\t'.format(flow_time))
-#                            fh.write('{}'.format(row))
-#                        else:
-#                            fh.write('timestamp\t\t')
-#                            fh.write('{}'.format(row))
-#            else:
-#                raw_data = subprocess_open(self._cmd)
-#                txt_data = raw_data[0]
-#                m = re.search(pattern, txt_data)
-#                startidx = m.start()
-#                endidx = m.end()
-#                flow_time = txt_data[startidx:endidx]
-#
-#                txt_data = re.sub(pattern, "", txt_data)
-#                txt_data = re.sub(pattern_01, "", txt_data)
-#                txt_data = re.sub(pattern_02, "", txt_data)
-#                txt_data = re.sub(pattern_03, "", txt_data)
-#                reader = csv.DictReader(itertools.islice(txt_data.splitlines(), 1,
-#                                                            None),
-#                                        delimiter=' ',
-#                                        skipinitialspace=True,
-#                                        fieldnames=fieldnames)
-#
-#                for row in reader:
-#                    with open(self._txt_logfilepath, "a") as fh:
-#                        if not fieldnames[1] in row:
-#                            fh.write('{}\t'.format(flow_time))
-#                            fh.write('{}'.format(row))
-#                        else:
-#                            fh.write('timestamp\t\t')
-#                            fh.write('{}'.format(row))
-
-
 ################################################################################
 #       Write the txt type log from the command type 3
 ################################################################################
     def start_fr_txt(self):
         try:
             global is_extracted
-            #pattern = r'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
-            #pattern_01 = r'[-]{1,10}'
-            #pattern_03 = r'\s+\n'
-            #pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
-
             raw_data = subprocess_open(self._cmd_for_field)
             # ERR Routine
             if 'Cannot connect to server' in raw_data[0]:
@@ -1203,9 +995,6 @@ class Flowrecorder:
                     filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(
                         FLOW_USER_LOG_FOLDER, self._foldername[0],
                         self._foldername[1], src_host)
-                    #logger_monitor.info("{}/{}{}/{}_outbound_flows.txt".format(
-                    #    FLOW_USER_LOG_FOLDER, self._foldername[0],
-                    #    self._foldername[1], src_host))
                 if not (os.path.isfile(filename_by_src_path)):
                     txt_by_src = open(filename_by_src_path, 'w')
                     txt_by_src.close()
