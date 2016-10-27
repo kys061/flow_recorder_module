@@ -22,6 +22,8 @@ STM_SCRIPT_PATH = r'/opt/stm/target/pcli/stm_cli.py'
 SCRIPT_PATH = r'/etc/stmfiles/files/scripts/'
 SCRIPT_FILENAME = r'flow_recorder.py'
 MON_LOG_FILENAME = r'flow_recorder.log'
+RECORDER_SCRIPT_FILENAME = r'flow_recorder.py'
+MONITOR_SCRIPT_FILENAME = r'flow_recorder_monitor.py'
 LOGSIZE = 50000000 # 1000 = 1Kbyte, 1000000 = 1Mbyte, 50000000 = 50Mbyte
 archive_count = 1
 
@@ -950,6 +952,7 @@ class Flowrecorder:
 ################################################################################
 #       EXTERNAL, this case, stm9
 ################################################################################
+                #import pdb; pdb.set_trace()  # XXX BREAKPOINT
                 for ex_int in self._ex_interface:
                     if row['in_if'] == ex_int:
                         if row['dsthost'] in self._include_subnet_tree:
