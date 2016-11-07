@@ -339,7 +339,6 @@ def archive_rotate_test(do_compress, archive_period):
 def archive_rotate(do_compress, archive_period):
     try:
         global archive_count
-        import pdb; pdb.set_trace()  # XXX BREAKPOINT
         if is_month_begin():
             archive_mon = get_archive_month(archive_period)
             if archive_mon['last_month.month'] < 10:
@@ -622,16 +621,44 @@ class Flowrecorder:
 ################################################################################
 #      Def : Write row with generator
 ################################################################################
-    def write_row(self, rows, reader, record_file_type, fieldnames, flow_time, *args):
+    def write_row(self, rows, reader, record_file_type, fieldnames, flow_time, rows_len, *args):
         try:
             t1=time.time()
+            count_values = 1
+            labels = []
+            labels = fieldnames
             for row in rows:
+                row['timestamp'] = flow_time
+                values = []
+                for label in fieldnames:
+                    values.append(row[label])
+                middles = []
+                for label in labels:
+                    middles.append('='*len(label))
+
+                labelLine = list()
+                middleLine = list()
+                valueLine = list()
+
+                for label, middle, value in zip(labels, middles, values):
+                    padding = max(len(str(label)), len(str(value)))
+                    labelLine.append('{0:<{1}}'.format(label, padding))  # generate a string with the variable whitespace padding
+                    middleLine.append('{0:<{1}}'.format(middle, padding))
+                    valueLine.append('{0:<{1}}'.format(value, padding))
+
+                # Add datetime
+                #timestamp = 'timestamp'
+                #labelLine.insert(0, '{0:<{1}}'.format(timestamp, len(str(flow_time))))
+                #middleLine.insert(0, '{0:<{1}}'.format('='*len(timestamp), len(str(flow_time))))
+                #valueLine.insert(0, '{0:<{1}}'.format(flow_time, len(str(flow_time))))
+
                 # record_file_type = 0 : csv, 1 : txt, 2 : both
                 if record_file_type == 1 or record_file_type == 2:
+                    # cmd type is for total.
                     if not re.search('source_host|dest_host', self._cmd):
-                        row['timestamp'] = flow_time
+                        #row['timestamp'] = flow_time
+                        #df = pd.DataFrame(row, columns=fieldnames, index=[''])
 
-                        df = pd.DataFrame(row, columns=fieldnames, index=[''])
                         #test = [[]]
                         #[ test[0].append(val)  for val in row.values()]
                         #row_test = [fieldnames]
@@ -645,16 +672,27 @@ class Flowrecorder:
                         #    row_test[v] = [row[v]]
                         if os.path.isfile(self._txt_logfilepath):
                             with open(self._txt_logfilepath, 'a') as fh:
-                                #fh.write(tabulate(row_test, headers='firstrow', tablefmt="plain"))
-                                fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                fh.write('\n')
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+                            #with open(self._txt_logfilepath, 'a') as fh:
+                                #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+                                #fh.write('\n')
                         else:
                             test_file = open(self._txt_logfilepath, 'w')
                             test_file.close()
+                            if count_values >= 1 or count_values < rows_len + 1:
+                                with open(self._txt_logfilepath, 'a') as fh:
+                                    fh.write('      '.join(labelLine) + '\r\n')
                             with open(self._txt_logfilepath, 'a') as fh:
-#                                fh.write(tabulate(row_test, headers='firstrow', tablefmt="plain"))
-                                fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-                                fh.write('\n')
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+                            #with open(self._txt_logfilepath, 'a') as fh:
+                            #    fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
+                            #    fh.write('\n')
 
                     # CASE when source_host exist in CMD
                     if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
@@ -665,7 +703,7 @@ class Flowrecorder:
                         if outbound == self.d_interface['internal']:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
 
-                        row['timestamp'] = flow_time
+                        #row['timestamp'] = flow_time
                         df = pd.DataFrame(row, columns=fieldnames, index=[''])
                         if os.path.isfile(self._txt_logfilepath):
                             with open(self._txt_logfilepath, 'a') as fh:
@@ -687,7 +725,7 @@ class Flowrecorder:
                         if inbound == self.d_interface['external']:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
 
-                        row['timestamp'] = flow_time
+                        #row['timestamp'] = flow_time
                         df = pd.DataFrame(row, columns=fieldnames, index=[''])
                         if os.path.isfile(self._txt_logfilepath):
                             with open(self._txt_logfilepath, 'a') as fh:
@@ -699,12 +737,11 @@ class Flowrecorder:
                             with open(self._txt_logfilepath, 'a') as fh:
                                 fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
                                 fh.write('\n')
-    ################################################################################
-    #      record total for csv
-    ################################################################################
+                # record total for csv
                 # record_file_type = 0 : csv, 1 : txt, 2 : both
                 if record_file_type == 0 or record_file_type == 2:
                     if not re.search('source_host|dest_host', self._cmd):
+                        #row['timestamp'] = flow_time
                         if not (os.path.isfile(self._csv_logfilepath)):
                             csv_file = open(self._csv_logfilepath, 'w')
                             csv_file.close()
@@ -760,7 +797,7 @@ class Flowrecorder:
                                 writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                 writer.writerow(row)
         except Exception as e:
-            logger_recorder.error("print_row() cannot be executed, {}".format(e))
+            logger_recorder.error("write_row() cannot be executed, {}".format(e))
             pass
         else:
             t2 = time.time()
@@ -805,9 +842,10 @@ class Flowrecorder:
                                     fieldnames=fieldnames)
 
             result = sorted(reader, key=lambda d: d['srchost'])
+            rows_len = len(result)
             fieldnames.insert(0, 'timestamp')
             rows = GetRow(result)
-            self.write_row(rows, reader, record_file_type, fieldnames, flow_time, *args)
+            self.write_row(rows, reader, record_file_type, fieldnames, flow_time, rows_len, *args)
         except Exception as e:
             logger_recorder.error("record_total() cannot be executed, {}".format(e))
             pass
