@@ -1,3 +1,23 @@
+'''
+    flow_recorder_module
+    ~~~~~~~~~~~~~~~~~~~
+
+    flow_recorder_module is a support tool. It provide a below module.
+
+    1. common module
+    ----------------
+        :Module to use for monitor and recorder
+
+    2. monitor module
+    -----------------
+        :Module to use for monitor only
+
+    3. recorder module
+        :Module to use for recorder only
+
+    :copyright: (c) 2016 by yskang.
+'''
+
 import os
 import subprocess
 from datetime import datetime, timedelta
