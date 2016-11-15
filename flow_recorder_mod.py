@@ -821,10 +821,13 @@ class Flowrecorder:
             pass
         else:
             t2 = time.time()
-            print (t2-t1)
             if record_file_type == 1 or record_file_type == 2:
+                print ("### txt extracted!")
+                print ("elapsed time : " + str(t2-t1))
                 logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._txt_logfilepath))
             if record_file_type == 0 or record_file_type == 2:
+                print ("### csv extracted!")
+                print ("elapsed time : " + str(t2-t1))
                 logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._csv_logfilepath))
 ################################################################################
 #      Def : extract total from the cmd
@@ -912,19 +915,35 @@ class Flowrecorder:
                                     fieldnames=fieldnames)
 
             result = sorted(reader, key=lambda d: d['srchost'])
-            #include = self._include
-            #include_subnet_tree = makeSubnetTree('INCLUDE')
-            # for
+            # get length of rows
+            rows_len = len(result)
+            # set for aligning txt
             count_values = 1
             labels = []
             labels = fieldnames
-            #df = pd.DataFrame()
             fieldnames.insert(0, 'timestamp')
             count_df = 0
             # do log for the users
             t1 = time.time()
             for row in result:
                 row['timestamp'] = flow_time
+                # for aligning txt
+                values = []
+                for label in fieldnames:
+                    values.append(row[label])
+                middles = []
+                for label in labels:
+                    middles.append('='*len(label))
+
+                labelLine = list()
+                middleLine = list()
+                valueLine = list()
+
+                for label, middle, value in zip(labels, middles, values):
+                    padding = max(len(str(label)), len(str(value)))
+                    labelLine.append('{0:<{1}}'.format(label, padding))  # generate a string with the variable whitespace padding
+                    middleLine.append('{0:<{1}}'.format(middle, padding))
+                    valueLine.append('{0:<{1}}'.format(value, padding))
                 # EXTERNAL, this case, stm9
                 #import pdb; pdb.set_trace()  # XXX BREAKPOINT
                 for ex_int in self._ex_interface:
@@ -949,17 +968,39 @@ class Flowrecorder:
                                         writer.writerow(row)
                             # Parse TXT if row's in_if is STM9
                             if record_file_type == 1 or record_file_type == 2:
-                                df = pd.DataFrame(row, columns=fieldnames, index=[''])
+                                #
                                 if os.path.isfile(flowlog_txt_by_dsthost_path):
                                     with open(flowlog_txt_by_dsthost_path, 'a') as fh:
-                                        fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                        fh.write('\n')
+                                        fh.write('      '.join(valueLine) + '\r\n')
+                                    count_values += 1
+                                    if count_values == rows_len + 1:
+                                        count_values += 1
+                                    #with open(self._txt_logfilepath, 'a') as fh:
+                                        #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+                                        #fh.write('\n')
                                 else:
-                                    test_file = open(flowlog_txt_by_dsthost_path, 'w')
-                                    test_file.close()
+                                    txt_file = open(flowlog_txt_by_dsthost_path, 'w')
+                                    txt_file.close()
+                                    if count_values >= 1 or count_values < rows_len + 1:
+                                        with open(flowlog_txt_by_dsthost_path, 'a') as fh:
+                                            fh.write('      '.join(labelLine) + '\r\n')
                                     with open(flowlog_txt_by_dsthost_path, 'a') as fh:
-                                        fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-                                        fh.write('\n')
+                                        fh.write('      '.join(valueLine) + '\r\n')
+                                    count_values += 1
+                                    if count_values == rows_len + 1:
+                                        count_values += 1
+                                #
+#                                df = pd.DataFrame(row, columns=fieldnames, index=[''])
+#                                if os.path.isfile(flowlog_txt_by_dsthost_path):
+#                                    with open(flowlog_txt_by_dsthost_path, 'a') as fh:
+#                                        fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+#                                        fh.write('\n')
+#                                else:
+#                                    test_file = open(flowlog_txt_by_dsthost_path, 'w')
+#                                    test_file.close()
+#                                    with open(flowlog_txt_by_dsthost_path, 'a') as fh:
+#                                        fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
+#                                        fh.write('\n')
 
                 # INTERNAL, this case, stm10
                 for in_int in self._in_interface:
@@ -984,23 +1025,45 @@ class Flowrecorder:
                                         writer.writerow(row)
                             # Parse TXT if row's in_if is STM10
                             if record_file_type == 1 or record_file_type == 2:
-                                df = pd.DataFrame(row, columns=fieldnames, index=[''])
+                                #
                                 if os.path.isfile(flowlog_txt_by_srchost_path):
                                     with open(flowlog_txt_by_srchost_path, 'a') as fh:
-                                        fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                        fh.write('\n')
+                                        fh.write('      '.join(valueLine) + '\r\n')
+                                    count_values += 1
+                                    if count_values == rows_len + 1:
+                                        count_values += 1
+                                    #with open(self._txt_logfilepath, 'a') as fh:
+                                        #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+                                        #fh.write('\n')
                                 else:
-                                    test_file = open(flowlog_txt_by_srchost_path, 'w')
-                                    test_file.close()
+                                    txt_file = open(flowlog_txt_by_srchost_path, 'w')
+                                    txt_file.close()
+                                    if count_values >= 1 or count_values < rows_len + 1:
+                                        with open(flowlog_txt_by_srchost_path, 'a') as fh:
+                                            fh.write('      '.join(labelLine) + '\r\n')
                                     with open(flowlog_txt_by_srchost_path, 'a') as fh:
-                                        fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-                                        fh.write('\n')
+                                        fh.write('      '.join(valueLine) + '\r\n')
+                                    count_values += 1
+                                    if count_values == rows_len + 1:
+                                        count_values += 1
+                                #
+#                                df = pd.DataFrame(row, columns=fieldnames, index=[''])
+#                                if os.path.isfile(flowlog_txt_by_srchost_path):
+#                                    with open(flowlog_txt_by_srchost_path, 'a') as fh:
+#                                        fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+#                                        fh.write('\n')
+#                                else:
+#                                    test_file = open(flowlog_txt_by_srchost_path, 'w')
+#                                    test_file.close()
+#                                    with open(flowlog_txt_by_srchost_path, 'a') as fh:
+#                                        fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
+#                                        fh.write('\n')
 
         except Exception as e:
             logger_recorder.error("parse_data_by_host() cannot be executed, {}".format(e))
             pass
         else:
             t2=time.time()
-            print("parse by host\n")
-            print(t2-t1)
+            print ("### by host extracted!")
+            print ("elapsed time : " + str(t2-t1))
             logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(args[0], FLOW_USER_LOG_FOLDER))
