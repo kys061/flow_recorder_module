@@ -720,21 +720,42 @@ class Flowrecorder:
                         src_host = self._cmd[src.start()+12:src.end()]
                         inf = re.search('stm[0-9]+', self._cmd)
                         outbound = self._cmd[inf.start():inf.end()]
-                        if outbound == self.d_interface['internal']:
+                        if outbound == self.d_interface['internal'][0]:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
 
-                        #row['timestamp'] = flow_time
-                        df = pd.DataFrame(row, columns=fieldnames, index=[''])
-                        if os.path.isfile(self._txt_logfilepath):
-                            with open(self._txt_logfilepath, 'a') as fh:
-                                fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                fh.write('\n')
+                        if os.path.isfile(filename_by_src_path):
+                            with open(filename_by_src_path, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+                            #with open(self._txt_logfilepath, 'a') as fh:
+                                #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+                                #fh.write('\n')
                         else:
-                            test_file = open(self._txt_logfilepath, 'w')
+                            test_file = open(filename_by_src_path, 'w')
                             test_file.close()
-                            with open(self._txt_logfilepath, 'a') as fh:
-                                fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-                                fh.write('\n')
+                            if count_values >= 1 or count_values < rows_len + 1:
+                                with open(filename_by_src_path, 'a') as fh:
+                                    fh.write('      '.join(labelLine) + '\r\n')
+                            with open(filename_by_src_path, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+
+                        #row['timestamp'] = flow_time
+#                        df = pd.DataFrame(row, columns=fieldnames, index=[''])
+#                        if os.path.isfile(self._txt_logfilepath):
+#                            with open(self._txt_logfilepath, 'a') as fh:
+#                                fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+#                                fh.write('\n')
+#                        else:
+#                            test_file = open(self._txt_logfilepath, 'w')
+#                            test_file.close()
+#                            with open(self._txt_logfilepath, 'a') as fh:
+#                                fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
+#                                fh.write('\n')
 
                     #CASE when dest_host exist in CMD
                     if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
@@ -742,21 +763,43 @@ class Flowrecorder:
                         dst_host = self._cmd[dst.start()+10:dst.end()]
                         inf = re.search('stm[0-9]+', self._cmd)
                         inbound = self._cmd[inf.start():inf.end()]
-                        if inbound == self.d_interface['external']:
+                        if inbound == self.d_interface['external'][0]:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
 
-                        #row['timestamp'] = flow_time
-                        df = pd.DataFrame(row, columns=fieldnames, index=[''])
-                        if os.path.isfile(self._txt_logfilepath):
-                            with open(self._txt_logfilepath, 'a') as fh:
-                                fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                fh.write('\n')
+                        if os.path.isfile(filename_by_dst_path):
+                            with open(filename_by_dst_path, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+                            #with open(self._txt_logfilepath, 'a') as fh:
+                                #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+                                #fh.write('\n')
                         else:
-                            test_file = open(self._txt_logfilepath, 'w')
+                            test_file = open(filename_by_dst_path, 'w')
                             test_file.close()
-                            with open(self._txt_logfilepath, 'a') as fh:
-                                fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-                                fh.write('\n')
+                            if count_values >= 1 or count_values < rows_len + 1:
+                                with open(filename_by_dst_path, 'a') as fh:
+                                    fh.write('      '.join(labelLine) + '\r\n')
+                            with open(filename_by_dst_path, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+
+                        #row['timestamp'] = flow_time
+#                        df = pd.DataFrame(row, columns=fieldnames, index=[''])
+#                        if os.path.isfile(self._txt_logfilepath):
+#                            with open(self._txt_logfilepath, 'a') as fh:
+#                                fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
+#                                fh.write('\n')
+#                        else:
+#                            test_file = open(self._txt_logfilepath, 'w')
+#                            test_file.close()
+#                            with open(self._txt_logfilepath, 'a') as fh:
+#                                fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
+#                                fh.write('\n')
+
                 # record total for csv
                 # record_file_type = 0 : csv, 1 : txt, 2 : both
                 if record_file_type == 0 or record_file_type == 2:
@@ -780,7 +823,7 @@ class Flowrecorder:
                         src_host = self._cmd[src.start()+12:src.end()]
                         inf = re.search('stm[0-9]+', self._cmd)
                         outbound = self._cmd[inf.start():inf.end()]
-                        if outbound == self.d_interface['internal']:
+                        if outbound == self.d_interface['internal'][0]:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
                         if not (os.path.isfile(filename_by_src_path)):
                             csv_file = open(filename_by_src_path, 'w')
@@ -802,7 +845,7 @@ class Flowrecorder:
                         dst_host = self._cmd[dst.start()+10:dst.end()]
                         inf = re.search('stm[0-9]+', self._cmd)
                         inbound = self._cmd[inf.start():inf.end()]
-                        if inbound == self.d_interface['external']:
+                        if inbound == self.d_interface['external'][0]:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
                         if not (os.path.isfile(filename_by_dst_path)):
                             csv_file = open(filename_by_dst_path, 'w')
