@@ -75,11 +75,14 @@ logger_common.addFilter(filter)
 pattern_for_top = 'top [0-9]+'
 
 pattern = r'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
-pattern_01 = r'[-]{1,10}'
-pattern_03 = r'\s+\n'
-pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
-pattern_05 = r'[,\s+]{23}'
-pattern_06 = r'Flows at '
+#pattern_01 = r'[-]{2,10}'
+pattern_01 = r'[^a-zA-Z][^0-9][-][^a-zA-Z][^0-9]+'
+pattern_03 = r' +\n'
+#pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
+pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\n\s+'
+#pattern_05 = r'[,\s+]{23}'
+pattern_06 = r'Flows at'
+pattern_07 = r'Flows at '
 #
 is_extracted = False
 #
@@ -559,12 +562,19 @@ class Flowrecorder:
 ################################################################################
     def start(self, record_file_type, record_cmd_type):
         try:
-            m = re.search('stm[0-9]+', self._cmd)
+            _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+            for _intf in _intfs[0].split('\n'):
+                if re.search(_intf, self._cmd):
+                    m = re.search(_intf, self._cmd)
+
+#            m = re.search('stm[0-9]+', self._cmd)
             intf = self._cmd[m.start():m.end()]
             if not (os.path.isdir(self._usersfolder)):
                 create_folder(self._foldername)
+                t1=time.time()
                 raw_data = subprocess_open(self._cmd)
-
+                t2 = time.time()
+                print ("elapsed time from REST API : " + str(t2-t1))
                 if 'Cannot connect to server' in raw_data[0]:
                     logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
                 elif 'does not exist' in raw_data[0]:
@@ -583,7 +593,10 @@ class Flowrecorder:
                         self.record_total(raw_data[0], record_file_type, intf)
                         self.parse_data_by_host(raw_data[0], record_file_type, intf)
             else:
+                t1=time.time()
                 raw_data = subprocess_open(self._cmd)
+                t2 = time.time()
+                print ("elapsed time from REST API : " + str(t2-t1))
                 if 'Cannot connect to server' in raw_data[0]:
                     logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
                 elif 'does not exist' in raw_data[0]:
@@ -609,7 +622,11 @@ class Flowrecorder:
 ################################################################################
     def start_by_host(self, record_file_type):
         try:
-            m = re.search('stm[0-9]+', self._cmd)
+            _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+            for _intf in _intfs[0].split('\n'):
+                if re.search(_intf, self._cmd):
+                    m = re.search(_intf, self._cmd)
+#            m = re.search('stm[0-9]+', self._cmd)
             intf = self._cmd[m.start():m.end()]
             if not (os.path.isdir(self._usersfolder)):
                 create_folder(self._foldername)
@@ -718,7 +735,11 @@ class Flowrecorder:
                     if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
                         src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         src_host = self._cmd[src.start()+12:src.end()]
-                        inf = re.search('stm[0-9]+', self._cmd)
+                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+                        for _intf in _intfs[0].split('\n'):
+                            if re.search(_intf, self._cmd):
+                                inf = re.search(_intf, self._cmd)
+#                        inf = re.search('stm[0-9]+', self._cmd)
                         outbound = self._cmd[inf.start():inf.end()]
                         if outbound == self.d_interface['internal'][0]:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
@@ -761,7 +782,11 @@ class Flowrecorder:
                     if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
                         dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         dst_host = self._cmd[dst.start()+10:dst.end()]
-                        inf = re.search('stm[0-9]+', self._cmd)
+                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+                        for _intf in _intfs[0].split('\n'):
+                            if re.search(_intf, self._cmd):
+                                inf = re.search(_intf, self._cmd)
+#                        inf = re.search('stm[0-9]+', self._cmd)
                         inbound = self._cmd[inf.start():inf.end()]
                         if inbound == self.d_interface['external'][0]:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
@@ -821,7 +846,11 @@ class Flowrecorder:
                     if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
                         src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         src_host = self._cmd[src.start()+12:src.end()]
-                        inf = re.search('stm[0-9]+', self._cmd)
+                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+                        for _intf in _intfs[0].split('\n'):
+                            if re.search(_intf, self._cmd):
+                                inf = re.search(_intf, self._cmd)
+#                        inf = re.search('stm[0-9]+', self._cmd)
                         outbound = self._cmd[inf.start():inf.end()]
                         if outbound == self.d_interface['internal'][0]:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
@@ -843,7 +872,11 @@ class Flowrecorder:
                     if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
                         dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         dst_host = self._cmd[dst.start()+10:dst.end()]
-                        inf = re.search('stm[0-9]+', self._cmd)
+                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+                        for _intf in _intfs[0].split('\n'):
+                            if re.search(_intf, self._cmd):
+                                inf = re.search(_intf, self._cmd)
+                        #inf = re.search('stm[0-9]+', self._cmd)
                         inbound = self._cmd[inf.start():inf.end()]
                         if inbound == self.d_interface['external'][0]:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
@@ -892,11 +925,15 @@ class Flowrecorder:
             for field in fieldnames:
                 pattern_02 += field+"|"
 
-            raw_data = re.sub(pattern, "", raw_data)
+#            raw_data = re.sub(pattern, "", raw_data)
             raw_data = re.sub(pattern_01, "", raw_data)
+            raw_data = re.sub(pattern_03, "", raw_data)
+            raw_data = re.sub(pattern_04, "", raw_data)
             raw_data = re.sub(pattern_02, "", raw_data)
             raw_data = re.sub(pattern_03, "", raw_data)
-            raw_data = re.sub(pattern_06, "", raw_data)
+#            raw_data = re.sub(pattern_06, "", raw_data)
+#            raw_data = re.sub(pattern_07, "", raw_data)
+
 #            reader = csv.DictReader(itertools.islice(raw_data.splitlines(), 0,
 #                                                     None),
 #                                    delimiter=' ',
@@ -942,11 +979,15 @@ class Flowrecorder:
             for field in fieldnames:
                 pattern_02 += field+"|"
 
-            raw_data = re.sub(pattern, "", raw_data)
+#            raw_data = re.sub(pattern, "", raw_data)
             raw_data = re.sub(pattern_01, "", raw_data)
+            raw_data = re.sub(pattern_03, "", raw_data)
+            raw_data = re.sub(pattern_04, "", raw_data)
             raw_data = re.sub(pattern_02, "", raw_data)
             raw_data = re.sub(pattern_03, "", raw_data)
-            raw_data = re.sub(pattern_06, "", raw_data)
+#            raw_data = re.sub(pattern_06, "", raw_data)
+#            raw_data = re.sub(pattern_07, "", raw_data)
+
 #            reader = csv.DictReader(itertools.islice(raw_data.splitlines(), 0,
 #                                                     None),
 #                                    delimiter=' ',
@@ -988,7 +1029,6 @@ class Flowrecorder:
                     middleLine.append('{0:<{1}}'.format(middle, padding))
                     valueLine.append('{0:<{1}}'.format(value, padding))
                 # EXTERNAL, this case, stm9
-                #import pdb; pdb.set_trace()  # XXX BREAKPOINT
                 for ex_int in self._ex_interface:
                     if row['in_if'] == ex_int:
                         if row['dsthost'] in self._include_subnet_tree:
