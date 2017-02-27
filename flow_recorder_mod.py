@@ -142,6 +142,16 @@ class GetRow(object):
 ################################################################################
 def init_logger():
     # recorder logger setting
+    global logger_recorder, logger_monitor, logger_common
+    global handler, filter, formatter
+
+    for hdlr in logger_recorder.handlers[:]: # remove all old handlers
+        logger_recorder.removeHandler(hdlr)
+    for hdlr in logger_monitor.handlers[:]: # remove all old handlers
+        logger_monitor.removeHandler(hdlr)
+    for hdlr in logger_common.handlers[:]: # remove all old handlers
+        logger_common.removeHandler(hdlr)
+
     logger_recorder = logging.getLogger('saisei.flow.recorder')
     logger_recorder.setLevel(logging.INFO)
     logger_monitor = logging.getLogger('saisei.flow.recorder.monitor')
@@ -221,15 +231,15 @@ def get_logsize():
 #  Rotate logfile when logsize is bigger thant var(LOGSIZE).
 def logrotate(logfilepath, logsize):
     try:
-        if os.path.isfile(logfilepath+".5"):
-            os.remove(logfilepath+".5")
-        if os.path.isfile(logfilepath+".4"):
+        if os.path.isfile(logfilepath+r'.5'):
+            os.remove(logfilepath+r'.5')
+        if os.path.isfile(logfilepath+r'.4'):
             shutil.copyfile(logfilepath + r'.4', logfilepath + r'.5')
-        if os.path.isfile(logfilepath+".3"):
+        if os.path.isfile(logfilepath+r'.3'):
             shutil.copyfile(logfilepath + r'.3', logfilepath + r'.4')
-        if os.path.isfile(logfilepath+".2"):
+        if os.path.isfile(logfilepath+r'.2'):
             shutil.copyfile(logfilepath + r'.2', logfilepath + r'.3')
-        if os.path.isfile(logfilepath+".1"):
+        if os.path.isfile(logfilepath+r'.1'):
             shutil.copyfile(logfilepath + r'.1', logfilepath + r'.2')
         if os.path.isfile(logfilepath):
             os.rename(logfilepath, logfilepath + r'.1')
@@ -257,12 +267,9 @@ def is_month_begin():
 
 # archive_path = /var/log/flows/201608, /var/log/flows/users/201608
 def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_folder_name, do_compress):
-    #print("make archive files in {}!!!".format(archive_path))
-    #_compress_file_name = compress_folder_name + '.tar.gz'
     _delete_file_path = []
     for i in range(len(delete_path)):
         _delete_file_path.append(delete_path[i] + '.tar.gz')
-    #print("{}, {}".format(_archive_file_name, _archive_folder_name))
 
     # make tarfile, do compress
     if do_compress == True:
@@ -270,15 +277,6 @@ def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_f
             for compresspath in compress_path:
                 filenames = GetFilenames(compresspath)
                 compress_file(compresspath, filenames)
-            #for i in range(len(delete_path)):
-            #    wtar = tarfile.open(delete_path[i]+'.tar.gz', mode='w:gz')
-            #    wtar.add(delete_path[i])
-            #    wtar.close()
-            #for i in range(len(compress_path)):
-            #    wtar = tarfile.open(compress_path[i]+'.tar.gz', mode='w:gz')
-            #    wtar.add(compress_path[i])
-            #    wtar.close()
-            #    print("Compress is success at {}!!".format(compress_path[i]))
         except Exception as e:
             logger_monitor.error("archive tarfile cannot be executed, {}".format(e))
             pass
@@ -309,15 +307,9 @@ def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_f
     else:
         logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
 
-
-    #if tarfile.is_tarfile(FLOW_USER_LOG_FOLDER+'/'+_archive_file_name):
-    #    return True
-    #else:
-    #    return False
 def get_archive_month(archive_period):
     # Calculate last_two and last_three month
     try:
-        #archive_period = 4
         today = datetime.today()
         last_month = today + pd.tseries.offsets.DateOffset(months=-1)
         archiving_month = today + pd.tseries.offsets.DateOffset(months=-archive_period)
@@ -357,7 +349,6 @@ def archive_rotate_test(do_compress, archive_period):
         print (delete_folder_name)
         archive_logfolder(compress_path, compress_folder_name, delete_path, delete_folder_name, do_compress)
         print ("do make_del_archive_logfolder")
-    #logger_monitor.info("Today is the first day of this month, will start archive if there is folder {} month ago...".format(str(archive_period)))
 
 def archive_rotate(do_compress, archive_period):
     try:
@@ -395,7 +386,6 @@ def archive_rotate(do_compress, archive_period):
 def do_flow_recorder(script_name_path, curTime, process_name):
     try:
         cmd = script_name_path + " &"
-#        cmd = "sudo " + script_name_path + " &"
         subprocess.Popen(cmd,
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE,
@@ -430,6 +420,9 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
                 monlog_size = get_logsize()
                 if monlog_size > LOGSIZE:
                     logrotate(SCRIPT_MON_LOG_FILE, monlog_size)
+                    init_logger()
+                else:
+                    logger_monitor.info("flow_recorder log size {} is small than default LOGSIZE {}".format(monlog_size, LOGSIZE))
         elif recorder_process_count == "0\n":
             if not os.path.isfile(SCRIPT_MON_LOG_FILE):
                 err_file = open(SCRIPT_MON_LOG_FILE, 'w')
@@ -447,7 +440,8 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
                 do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
                 logger_monitor.info("Flow {} process was restarted.".format(SCRIPT_FILENAME))
         else:
-            pass
+            logger_monitor.info("process count is too much as expected!")
+
     except Exception as e:
         logger_monitor.error("compare_process_count() cannot be executed, {}".format(e))
         pass
@@ -492,7 +486,6 @@ def parse_fieldnames(data):
         str_fieldnames = ''
         for i in range(1):
             str_fieldnames = data.splitlines()[1]
-        #print(str_fieldnames)
         fieldname = str_fieldnames.split()
         fieldnames = []
         for field in fieldname:
@@ -529,7 +522,6 @@ class Flowrecorder:
         self._csv_logfilepath = self._logfilepath['csv']
         self._logfolderpath = logfolderpath
         self._include_subnet_tree = include_subnet_tree
-#        INCLUDE = include
 
     def get_cmd(self):
         return self._cmd
@@ -567,7 +559,6 @@ class Flowrecorder:
                 if re.search(_intf, self._cmd):
                     m = re.search(_intf, self._cmd)
 
-#            m = re.search('stm[0-9]+', self._cmd)
             intf = self._cmd[m.start():m.end()]
             if not (os.path.isdir(self._usersfolder)):
                 create_folder(self._foldername)
@@ -626,12 +617,9 @@ class Flowrecorder:
             for _intf in _intfs[0].split('\n'):
                 if re.search(_intf, self._cmd):
                     m = re.search(_intf, self._cmd)
-#            m = re.search('stm[0-9]+', self._cmd)
             intf = self._cmd[m.start():m.end()]
             if not (os.path.isdir(self._usersfolder)):
                 create_folder(self._foldername)
-                #fh = open(self._logfilepath, 'w')
-                #fh.close()
                 raw_data = subprocess_open(self._cmd)
 
                 if 'Cannot connect to server' in raw_data[0]:
@@ -684,38 +672,17 @@ class Flowrecorder:
                     valueLine.append('{0:<{1}}'.format(value, padding))
 
                 # Add datetime
-                #timestamp = 'timestamp'
-                #labelLine.insert(0, '{0:<{1}}'.format(timestamp, len(str(flow_time))))
-                #middleLine.insert(0, '{0:<{1}}'.format('='*len(timestamp), len(str(flow_time))))
-                #valueLine.insert(0, '{0:<{1}}'.format(flow_time, len(str(flow_time))))
 
                 # record_file_type = 0 : csv, 1 : txt, 2 : both
                 if record_file_type == 1 or record_file_type == 2:
                     # cmd type is for total.
                     if not re.search('source_host|dest_host', self._cmd):
-                        #row['timestamp'] = flow_time
-                        #df = pd.DataFrame(row, columns=fieldnames, index=[''])
-
-                        #test = [[]]
-                        #[ test[0].append(val)  for val in row.values()]
-                        #row_test = [fieldnames]
-                        #test = []
-                        #for k,f in enumerate(fieldnames):
-                        #    for h,v in enumerate(row):
-                        #        if v == fieldnames[k]:
-                        #            test.append(row[fieldnames[k]])
-                        #row_test.append(test)
-                        #for k, v in enumerate(row):
-                        #    row_test[v] = [row[v]]
                         if os.path.isfile(self._txt_logfilepath):
                             with open(self._txt_logfilepath, 'a') as fh:
                                 fh.write('      '.join(valueLine) + '\r\n')
                             count_values += 1
                             if count_values == rows_len + 1:
                                 count_values += 1
-                            #with open(self._txt_logfilepath, 'a') as fh:
-                                #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                #fh.write('\n')
                         else:
                             test_file = open(self._txt_logfilepath, 'w')
                             test_file.close()
@@ -727,9 +694,6 @@ class Flowrecorder:
                             count_values += 1
                             if count_values == rows_len + 1:
                                 count_values += 1
-                            #with open(self._txt_logfilepath, 'a') as fh:
-                            #    fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-                            #    fh.write('\n')
 
                     # CASE when source_host exist in CMD
                     if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
@@ -739,7 +703,6 @@ class Flowrecorder:
                         for _intf in _intfs[0].split('\n'):
                             if re.search(_intf, self._cmd):
                                 inf = re.search(_intf, self._cmd)
-#                        inf = re.search('stm[0-9]+', self._cmd)
                         outbound = self._cmd[inf.start():inf.end()]
                         if outbound == self.d_interface['internal'][0]:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
@@ -750,9 +713,6 @@ class Flowrecorder:
                             count_values += 1
                             if count_values == rows_len + 1:
                                 count_values += 1
-                            #with open(self._txt_logfilepath, 'a') as fh:
-                                #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                #fh.write('\n')
                         else:
                             test_file = open(filename_by_src_path, 'w')
                             test_file.close()
@@ -765,19 +725,6 @@ class Flowrecorder:
                             if count_values == rows_len + 1:
                                 count_values += 1
 
-                        #row['timestamp'] = flow_time
-#                        df = pd.DataFrame(row, columns=fieldnames, index=[''])
-#                        if os.path.isfile(self._txt_logfilepath):
-#                            with open(self._txt_logfilepath, 'a') as fh:
-#                                fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-#                                fh.write('\n')
-#                        else:
-#                            test_file = open(self._txt_logfilepath, 'w')
-#                            test_file.close()
-#                            with open(self._txt_logfilepath, 'a') as fh:
-#                                fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-#                                fh.write('\n')
-
                     #CASE when dest_host exist in CMD
                     if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
                         dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
@@ -786,7 +733,6 @@ class Flowrecorder:
                         for _intf in _intfs[0].split('\n'):
                             if re.search(_intf, self._cmd):
                                 inf = re.search(_intf, self._cmd)
-#                        inf = re.search('stm[0-9]+', self._cmd)
                         inbound = self._cmd[inf.start():inf.end()]
                         if inbound == self.d_interface['external'][0]:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
@@ -797,9 +743,6 @@ class Flowrecorder:
                             count_values += 1
                             if count_values == rows_len + 1:
                                 count_values += 1
-                            #with open(self._txt_logfilepath, 'a') as fh:
-                                #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                #fh.write('\n')
                         else:
                             test_file = open(filename_by_dst_path, 'w')
                             test_file.close()
@@ -812,24 +755,10 @@ class Flowrecorder:
                             if count_values == rows_len + 1:
                                 count_values += 1
 
-                        #row['timestamp'] = flow_time
-#                        df = pd.DataFrame(row, columns=fieldnames, index=[''])
-#                        if os.path.isfile(self._txt_logfilepath):
-#                            with open(self._txt_logfilepath, 'a') as fh:
-#                                fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-#                                fh.write('\n')
-#                        else:
-#                            test_file = open(self._txt_logfilepath, 'w')
-#                            test_file.close()
-#                            with open(self._txt_logfilepath, 'a') as fh:
-#                                fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-#                                fh.write('\n')
-
                 # record total for csv
                 # record_file_type = 0 : csv, 1 : txt, 2 : both
                 if record_file_type == 0 or record_file_type == 2:
                     if not re.search('source_host|dest_host', self._cmd):
-                        #row['timestamp'] = flow_time
                         if not (os.path.isfile(self._csv_logfilepath)):
                             csv_file = open(self._csv_logfilepath, 'w')
                             csv_file.close()
@@ -850,7 +779,6 @@ class Flowrecorder:
                         for _intf in _intfs[0].split('\n'):
                             if re.search(_intf, self._cmd):
                                 inf = re.search(_intf, self._cmd)
-#                        inf = re.search('stm[0-9]+', self._cmd)
                         outbound = self._cmd[inf.start():inf.end()]
                         if outbound == self.d_interface['internal'][0]:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
@@ -876,7 +804,6 @@ class Flowrecorder:
                         for _intf in _intfs[0].split('\n'):
                             if re.search(_intf, self._cmd):
                                 inf = re.search(_intf, self._cmd)
-                        #inf = re.search('stm[0-9]+', self._cmd)
                         inbound = self._cmd[inf.start():inf.end()]
                         if inbound == self.d_interface['external'][0]:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
@@ -925,20 +852,12 @@ class Flowrecorder:
             for field in fieldnames:
                 pattern_02 += field+"|"
 
-#            raw_data = re.sub(pattern, "", raw_data)
             raw_data = re.sub(pattern_01, "", raw_data)
             raw_data = re.sub(pattern_03, "", raw_data)
             raw_data = re.sub(pattern_04, "", raw_data)
             raw_data = re.sub(pattern_02, "", raw_data)
             raw_data = re.sub(pattern_03, "", raw_data)
-#            raw_data = re.sub(pattern_06, "", raw_data)
-#            raw_data = re.sub(pattern_07, "", raw_data)
 
-#            reader = csv.DictReader(itertools.islice(raw_data.splitlines(), 0,
-#                                                     None),
-#                                    delimiter=' ',
-#                                    skipinitialspace=True,
-#                                    fieldnames=fieldnames)
             reader = csv.DictReader(raw_data.splitlines(),
                                     delimiter=' ',
                                     skipinitialspace=True,
@@ -952,7 +871,7 @@ class Flowrecorder:
         except Exception as e:
             logger_recorder.error("record_total() cannot be executed, {}".format(e))
             pass
-#
+
 ################################################################################
 #       Def : Extract data by subnetree
 ################################################################################
@@ -979,20 +898,12 @@ class Flowrecorder:
             for field in fieldnames:
                 pattern_02 += field+"|"
 
-#            raw_data = re.sub(pattern, "", raw_data)
             raw_data = re.sub(pattern_01, "", raw_data)
             raw_data = re.sub(pattern_03, "", raw_data)
             raw_data = re.sub(pattern_04, "", raw_data)
             raw_data = re.sub(pattern_02, "", raw_data)
             raw_data = re.sub(pattern_03, "", raw_data)
-#            raw_data = re.sub(pattern_06, "", raw_data)
-#            raw_data = re.sub(pattern_07, "", raw_data)
 
-#            reader = csv.DictReader(itertools.islice(raw_data.splitlines(), 0,
-#                                                     None),
-#                                    delimiter=' ',
-#                                    skipinitialspace=True,
-#                                    fieldnames=fieldnames)
             reader = csv.DictReader(raw_data.splitlines(),
                                     delimiter=' ',
                                     skipinitialspace=True,
@@ -1046,7 +957,6 @@ class Flowrecorder:
                                         writer.writerow(row)
                                 else:
                                     with open(flowlog_csv_by_dsthost_path, "a") as fh:
-                                        #fh.write('{}'.format(flow_time))
                                         writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                         writer.writerow(row)
                             # Parse TXT if row's in_if is STM9
@@ -1058,9 +968,6 @@ class Flowrecorder:
                                     count_values += 1
                                     if count_values == rows_len + 1:
                                         count_values += 1
-                                    #with open(self._txt_logfilepath, 'a') as fh:
-                                        #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                        #fh.write('\n')
                                 else:
                                     txt_file = open(flowlog_txt_by_dsthost_path, 'w')
                                     txt_file.close()
@@ -1073,17 +980,6 @@ class Flowrecorder:
                                     if count_values == rows_len + 1:
                                         count_values += 1
                                 #
-#                                df = pd.DataFrame(row, columns=fieldnames, index=[''])
-#                                if os.path.isfile(flowlog_txt_by_dsthost_path):
-#                                    with open(flowlog_txt_by_dsthost_path, 'a') as fh:
-#                                        fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-#                                        fh.write('\n')
-#                                else:
-#                                    test_file = open(flowlog_txt_by_dsthost_path, 'w')
-#                                    test_file.close()
-#                                    with open(flowlog_txt_by_dsthost_path, 'a') as fh:
-#                                        fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-#                                        fh.write('\n')
 
                 # INTERNAL, this case, stm10
                 for in_int in self._in_interface:
@@ -1115,9 +1011,6 @@ class Flowrecorder:
                                     count_values += 1
                                     if count_values == rows_len + 1:
                                         count_values += 1
-                                    #with open(self._txt_logfilepath, 'a') as fh:
-                                        #fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-                                        #fh.write('\n')
                                 else:
                                     txt_file = open(flowlog_txt_by_srchost_path, 'w')
                                     txt_file.close()
@@ -1129,18 +1022,6 @@ class Flowrecorder:
                                     count_values += 1
                                     if count_values == rows_len + 1:
                                         count_values += 1
-                                #
-#                                df = pd.DataFrame(row, columns=fieldnames, index=[''])
-#                                if os.path.isfile(flowlog_txt_by_srchost_path):
-#                                    with open(flowlog_txt_by_srchost_path, 'a') as fh:
-#                                        fh.write(tabulate(df.values, headers='firstrow', tablefmt='plain'))
-#                                        fh.write('\n')
-#                                else:
-#                                    test_file = open(flowlog_txt_by_srchost_path, 'w')
-#                                    test_file.close()
-#                                    with open(flowlog_txt_by_srchost_path, 'a') as fh:
-#                                        fh.write(tabulate(df.values, fieldnames, tablefmt='plain'))
-#                                        fh.write('\n')
 
         except Exception as e:
             logger_recorder.error("parse_data_by_host() cannot be executed, {}".format(e))
