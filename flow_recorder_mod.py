@@ -1,3 +1,23 @@
+'''
+    flow_recorder_module
+    ~~~~~~~~~~~~~~~~~~~
+
+    flow_recorder_module is a support tool. It provide a below module.
+
+    1. common module
+    ----------------
+        :Module to use for monitor and recorder
+
+    2. monitor module
+    -----------------
+        :Module to use for monitor only
+
+    3. recorder module
+        :Module to use for recorder only
+
+    :copyright: (c) 2016 by yskang.
+'''
+
 import os
 import subprocess
 from datetime import datetime, timedelta
@@ -9,7 +29,7 @@ import itertools
 import logging
 import tarfile
 import pandas as pd
-from SubnetTree import SubnetTree
+from tabulate import tabulate
 
 # Init path and filename
 FLOW_LOG_FOLDER_PATH = r'/var/log/flows'
@@ -25,6 +45,7 @@ MON_LOG_FILENAME = r'flow_recorder.log'
 RECORDER_SCRIPT_FILENAME = r'flow_recorder.py'
 MONITOR_SCRIPT_FILENAME = r'flow_recorder_monitor.py'
 LOGSIZE = 50000000 # 1000 = 1Kbyte, 1000000 = 1Mbyte, 50000000 = 50Mbyte
+# check if archive is done or not.
 archive_count = 1
 
 # recorder logger setting
@@ -49,27 +70,22 @@ logger_monitor.addHandler(handler)
 logger_monitor.addFilter(filter)
 logger_common.addHandler(handler)
 logger_common.addFilter(filter)
+
 # pattern for re
 pattern_for_top = 'top [0-9]+'
 
 pattern = r'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
-pattern_01 = r'[-]{1,10}'
-pattern_03 = r'\s+\n'
-pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
-pattern_05 = r'[,\s+]{23}'
-pattern_06 = r'Flows at '
+#pattern_01 = r'[-]{2,10}'
+pattern_01 = r'[^a-zA-Z][^0-9][-][^a-zA-Z][^0-9]+'
+pattern_03 = r' +\n'
+#pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
+pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\n\s+'
+#pattern_05 = r'[,\s+]{23}'
+pattern_06 = r'Flows at'
+pattern_07 = r'Flows at '
 #
 is_extracted = False
 #
-INCLUDE = [
-        '101.250.240.0/24',
-        '101.250.241.0/24',
-        '192.168.0.0/16',
-        '10.0.0.0/8',
-        '172.16.0.0/16'
-        '101.250.242.0/24',
-        '203.212.0.0/16'
-]
 ################################################################################
 #                       Common Module
 ################################################################################
@@ -105,8 +121,7 @@ def get_nowdate():
         pass
     return [nowdate, nowdatetime]
 ################################################################################
-################################################################################
-#                      Flow.Monitor  Class
+#                      Flow.Monitor  Class with generator
 ################################################################################
 class GetFilenames(object):
     def __init__(self, dirpath):
@@ -116,11 +131,27 @@ class GetFilenames(object):
         for filename in filelist:
             yield filename
 
+class GetRow(object):
+    def __init__(self, result):
+        self._result = result
+    def __iter__(self):
+        for row in self._result:
+            yield row
 ################################################################################
 #                      Flow.Monitor  Module
 ################################################################################
 def init_logger():
     # recorder logger setting
+    global logger_recorder, logger_monitor, logger_common
+    global handler, filter, formatter
+
+    for hdlr in logger_recorder.handlers[:]: # remove all old handlers
+        logger_recorder.removeHandler(hdlr)
+    for hdlr in logger_monitor.handlers[:]: # remove all old handlers
+        logger_monitor.removeHandler(hdlr)
+    for hdlr in logger_common.handlers[:]: # remove all old handlers
+        logger_common.removeHandler(hdlr)
+
     logger_recorder = logging.getLogger('saisei.flow.recorder')
     logger_recorder.setLevel(logging.INFO)
     logger_monitor = logging.getLogger('saisei.flow.recorder.monitor')
@@ -131,8 +162,7 @@ def init_logger():
     handler = logging.FileHandler(SCRIPT_MON_LOG_FILE)
     handler.setLevel(logging.INFO)
     filter = logging.Filter('saisei.flow')
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     handler.addFilter(filter)
 
@@ -201,15 +231,15 @@ def get_logsize():
 #  Rotate logfile when logsize is bigger thant var(LOGSIZE).
 def logrotate(logfilepath, logsize):
     try:
-        if os.path.isfile(logfilepath+".5"):
-            os.remove(logfilepath+".5")
-        if os.path.isfile(logfilepath+".4"):
+        if os.path.isfile(logfilepath+r'.5'):
+            os.remove(logfilepath+r'.5')
+        if os.path.isfile(logfilepath+r'.4'):
             shutil.copyfile(logfilepath + r'.4', logfilepath + r'.5')
-        if os.path.isfile(logfilepath+".3"):
+        if os.path.isfile(logfilepath+r'.3'):
             shutil.copyfile(logfilepath + r'.3', logfilepath + r'.4')
-        if os.path.isfile(logfilepath+".2"):
+        if os.path.isfile(logfilepath+r'.2'):
             shutil.copyfile(logfilepath + r'.2', logfilepath + r'.3')
-        if os.path.isfile(logfilepath+".1"):
+        if os.path.isfile(logfilepath+r'.1'):
             shutil.copyfile(logfilepath + r'.1', logfilepath + r'.2')
         if os.path.isfile(logfilepath):
             os.rename(logfilepath, logfilepath + r'.1')
@@ -237,12 +267,9 @@ def is_month_begin():
 
 # archive_path = /var/log/flows/201608, /var/log/flows/users/201608
 def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_folder_name, do_compress):
-    #print("make archive files in {}!!!".format(archive_path))
-    #_compress_file_name = compress_folder_name + '.tar.gz'
     _delete_file_path = []
     for i in range(len(delete_path)):
         _delete_file_path.append(delete_path[i] + '.tar.gz')
-    #print("{}, {}".format(_archive_file_name, _archive_folder_name))
 
     # make tarfile, do compress
     if do_compress == True:
@@ -250,15 +277,6 @@ def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_f
             for compresspath in compress_path:
                 filenames = GetFilenames(compresspath)
                 compress_file(compresspath, filenames)
-            #for i in range(len(delete_path)):
-            #    wtar = tarfile.open(delete_path[i]+'.tar.gz', mode='w:gz')
-            #    wtar.add(delete_path[i])
-            #    wtar.close()
-            #for i in range(len(compress_path)):
-            #    wtar = tarfile.open(compress_path[i]+'.tar.gz', mode='w:gz')
-            #    wtar.add(compress_path[i])
-            #    wtar.close()
-            #    print("Compress is success at {}!!".format(compress_path[i]))
         except Exception as e:
             logger_monitor.error("archive tarfile cannot be executed, {}".format(e))
             pass
@@ -289,15 +307,9 @@ def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_f
     else:
         logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
 
-
-    #if tarfile.is_tarfile(FLOW_USER_LOG_FOLDER+'/'+_archive_file_name):
-    #    return True
-    #else:
-    #    return False
 def get_archive_month(archive_period):
     # Calculate last_two and last_three month
     try:
-        #archive_period = 4
         today = datetime.today()
         last_month = today + pd.tseries.offsets.DateOffset(months=-1)
         archiving_month = today + pd.tseries.offsets.DateOffset(months=-archive_period)
@@ -337,7 +349,6 @@ def archive_rotate_test(do_compress, archive_period):
         print (delete_folder_name)
         archive_logfolder(compress_path, compress_folder_name, delete_path, delete_folder_name, do_compress)
         print ("do make_del_archive_logfolder")
-    #logger_monitor.info("Today is the first day of this month, will start archive if there is folder {} month ago...".format(str(archive_period)))
 
 def archive_rotate(do_compress, archive_period):
     try:
@@ -371,93 +382,10 @@ def archive_rotate(do_compress, archive_period):
     except Exception as e:
         logger_monitor.error("archive_rotate() cannot be excuted, {}".format(e))
 
-def archive_rotate_mod(do_compress, archive_period):
-    global archive_count
-    if is_month_begin():
-        current_year, last_year, current_month, last_month = get_lastmonth()
-        # Calculate last_two and last_three month
-        if current_month == 1:
-            last_three_month = 10
-            last_two_month = 11
-        elif current_month == 2:
-            last_three_month = 11
-            last_two_month = 12
-        elif current_month == 3:
-            last_three_month = 12
-            last_two_month = 1
-        else:
-            last_three_month = current_month - 3
-            last_two_month = current_month - 2
-        # Change Int to Str
-        if current_month >= 1 or current_month < 10:
-            current_month = '0'+str(current_month)
-        else:
-            current_month = str(current_month)
-
-        if last_month >= 1 or last_month < 10:
-            last_month = '0'+str(last_month)
-        else:
-            last_month = str(last_month)
-
-        if last_two_month >= 1 or last_two_month < 10:
-            last_two_month = '0'+str(last_two_month)
-        else:
-            last_two_month = str(last_two_month)
-
-        if last_three_month >= 1 or last_three_month < 10:
-            last_three_month = '0'+str(last_three_month)
-        else:
-            last_three_month = str(last_three_month)
-        current_year = str(current_year)
-        last_year = str(last_year)
-        # Make archive path and floder name
-        if str(current_month) == '01':
-            archive_path = [FLOW_USER_LOG_FOLDER + '/' + str(last_year) + str(last_month),
-                            FLOW_LOG_FOLDER_PATH + '/' + str(last_year) + str(last_month)]
-            archive_folder_name = str(last_year) + str(last_month)
-        else:
-            archive_path = [FLOW_USER_LOG_FOLDER + '/' + str(current_year) + str(last_month) + '/',
-                            FLOW_LOG_FOLDER_PATH + '/' + str(last_year) + str(last_month) + '/']
-            archive_folder_name = str(current_year) + str(last_month)
-        if str(current_month) == '01' or str(current_month) == '02' or str(current_month) == '03':
-            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(last_year) + str(last_three_month) + '/',
-                           FLOW_LOG_FOLDER_PATH + '/' + str(last_year) + str(last_three_month) + '/']
-            delete_folder_name = str(last_year) + str(last_three_month)
-        else:
-            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(current_year) + str(last_three_month),
-                           FLOW_LOG_FOLDER_PATH + '/' + str(current_year) + str(last_three_month)]
-            delete_folder_name = str(current_year) + str(last_three_month)
-
-        #print ("{}, {}, {}, {}, {}, {} -> archive last_month folder".format(
-            #current_year, last_year, current_month, last_month, last_three_month,
-            #archive_path, archive_folder_name, delete_path, delete_folder_name))
-        # Make tar.gz file and delete file last three month ago
-        if archive_count == 1:
-            archive_logfolder(archive_path, archive_folder_name, delete_path, delete_folder_name, do_compress)
-            logger_monitor.info("Today is the first day of this month, will start archive if there is folder 3 month ago...")
-            archive_count += 1
-            #if make_del_archive_logfolder(archive_path, archive_folder_name, delete_path, delete_folder_name, has_archive):
-            #    logger_monitor.info("Today is the first day of this month, will start archive if there is folder 3 month ago...")
-                #print("archive_count : %d " % archive_count)
-            #    archive_count += 1
-            #    logger_monitor.info("{} is archived successfully!".format(archive_folder_name))
-            #else:
-            #    logger_monitor.info("Today is the first day of this month, will start archive if there is folder 3 month ago...")
-                #print("archive_count : %d " % archive_count)
-            #    archive_count += 1
-            #    logger_monitor.error("{} is not archived!".format(archive_folder_name))
-    else:
-        logger_monitor.info("Today is not the first day of this month!")
-        logger_monitor.info("There is no folder to archive!")
-        #print("archive_count : %d " % archive_count)
-        #print ("not archive last_month folder")
-        archive_count = 1
-
 # Execute flow_recorder.py script.
 def do_flow_recorder(script_name_path, curTime, process_name):
     try:
         cmd = script_name_path + " &"
-#        cmd = "sudo " + script_name_path + " &"
         subprocess.Popen(cmd,
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE,
@@ -492,6 +420,9 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
                 monlog_size = get_logsize()
                 if monlog_size > LOGSIZE:
                     logrotate(SCRIPT_MON_LOG_FILE, monlog_size)
+                    init_logger()
+                else:
+                    logger_monitor.info("flow_recorder log size {} is small than default LOGSIZE {}".format(monlog_size, LOGSIZE))
         elif recorder_process_count == "0\n":
             if not os.path.isfile(SCRIPT_MON_LOG_FILE):
                 err_file = open(SCRIPT_MON_LOG_FILE, 'w')
@@ -509,12 +440,11 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
                 do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
                 logger_monitor.info("Flow {} process was restarted.".format(SCRIPT_FILENAME))
         else:
-            pass
+            logger_monitor.info("process count is too much as expected!")
+
     except Exception as e:
         logger_monitor.error("compare_process_count() cannot be executed, {}".format(e))
         pass
-################################################################################
-
 ################################################################################
 #                      Flow.Recorder  Module
 ################################################################################
@@ -556,7 +486,6 @@ def parse_fieldnames(data):
         str_fieldnames = ''
         for i in range(1):
             str_fieldnames = data.splitlines()[1]
-        #print(str_fieldnames)
         fieldname = str_fieldnames.split()
         fieldnames = []
         for field in fieldname:
@@ -565,26 +494,12 @@ def parse_fieldnames(data):
         logger_recorder.error("parse_fieldnames() cannot be executed, {}".format(e))
         pass
     return fieldnames
-#
-def makeSubnetTree(data_name):
-    result = SubnetTree()
-    data = eval(data_name)
-    if isinstance(data, dict):
-        for cidr, name in data.iteritems():
-            result[cidr] = name
-    else:
-        for cidr in data:
-            result[cidr] = str(cidr)
-    return result
-################################################################################
-
 ################################################################################
 #       Flowrecorder CLASS
 ################################################################################
 class Flowrecorder:
 
     def __init__(self, cmd, interface, foldername, logfilepath, logfolderpath, include_subnet_tree):
-#        global INCLUDE
         self._cmd = cmd
         self._cmd_for_field = re.sub(pattern_for_top, 'top 5', cmd)
         if re.search('source_host', self._cmd):
@@ -607,7 +522,6 @@ class Flowrecorder:
         self._csv_logfilepath = self._logfilepath['csv']
         self._logfolderpath = logfolderpath
         self._include_subnet_tree = include_subnet_tree
-#        INCLUDE = include
 
     def get_cmd(self):
         return self._cmd
@@ -635,16 +549,77 @@ class Flowrecorder:
         print(self._include_subnet_tree)
 
 ################################################################################
-#       all users CMD TYPE 2
+#       Def : start recording for record_cmd_type
+#       0:all, 1:all and users in subnetree, 2:by host, 3:0,1,2
 ################################################################################
-    def start_fr_by_host(self, record_file_type):
+    def start(self, record_file_type, record_cmd_type):
         try:
-            m = re.search('stm[0-9]+', self._cmd)
+            _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+            for _intf in _intfs[0].split('\n'):
+                if re.search(_intf, self._cmd):
+                    m = re.search(_intf, self._cmd)
+
             intf = self._cmd[m.start():m.end()]
             if not (os.path.isdir(self._usersfolder)):
                 create_folder(self._foldername)
-                #fh = open(self._logfilepath, 'w')
-                #fh.close()
+                t1=time.time()
+                raw_data = subprocess_open(self._cmd)
+                t2 = time.time()
+                print ("elapsed time from REST API : " + str(t2-t1))
+                if 'Cannot connect to server' in raw_data[0]:
+                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
+                elif 'does not exist' in raw_data[0]:
+                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
+                elif 'no matching objects' in raw_data[0]:
+                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
+                else:
+                    if record_cmd_type == 0:
+                        self.record_total(raw_data[0], record_file_type, intf)
+                    if record_cmd_type == 1:
+                        self.record_total(raw_data[0], record_file_type, intf)
+                        self.parse_data_by_host(raw_data[0], record_file_type, intf)
+                    if record_cmd_type == 2:
+                        self.record_total(raw_data[0], record_file_type, intf)
+                    if record_cmd_type == 3:
+                        self.record_total(raw_data[0], record_file_type, intf)
+                        self.parse_data_by_host(raw_data[0], record_file_type, intf)
+            else:
+                t1=time.time()
+                raw_data = subprocess_open(self._cmd)
+                t2 = time.time()
+                print ("elapsed time from REST API : " + str(t2-t1))
+                if 'Cannot connect to server' in raw_data[0]:
+                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
+                elif 'does not exist' in raw_data[0]:
+                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
+                elif 'no matching objects' in raw_data[0]:
+                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
+                else:
+                    if record_cmd_type == 0:
+                        self.record_total(raw_data[0], record_file_type, intf)
+                    if record_cmd_type == 1:
+                        self.record_total(raw_data[0], record_file_type, intf)
+                        self.parse_data_by_host(raw_data[0], record_file_type, intf)
+                    if record_cmd_type == 2:
+                        self.record_total(raw_data[0], record_file_type, intf)
+                    if record_cmd_type == 3:
+                        self.record_total(raw_data[0], record_file_type, intf)
+                        self.parse_data_by_host(raw_data[0], record_file_type, intf)
+        except Exception as e:
+            logger_recorder.error("start_by_subnetree() cannot be executed, {}".format(e))
+            pass
+################################################################################
+#       Def :  Extract data by HOST # CMD TYPE 3
+################################################################################
+    def start_by_host(self, record_file_type):
+        try:
+            _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+            for _intf in _intfs[0].split('\n'):
+                if re.search(_intf, self._cmd):
+                    m = re.search(_intf, self._cmd)
+            intf = self._cmd[m.start():m.end()]
+            if not (os.path.isdir(self._usersfolder)):
+                create_folder(self._foldername)
                 raw_data = subprocess_open(self._cmd)
 
                 if 'Cannot connect to server' in raw_data[0]:
@@ -654,15 +629,7 @@ class Flowrecorder:
                 elif 'no matching objects' in raw_data[0]:
                     logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
                 else:
-                    #fieldnames = parse_fieldnames(raw_data[0])
-                    #fieldnames.insert(0, 'timestamp')
-                    #with open(self._logfilepath, "a") as fh:
-                        #fh.write(','.join(fieldnames))
-                        #fh.write('\r\n')
-                    #time.sleep(1)
-                    self.parse_data_by_host(raw_data[0], record_file_type, intf)
                     self.record_total(raw_data[0], record_file_type, intf)
-                    #logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(intf, FLOW_USER_LOG_FOLDER))
             else:
                 raw_data = subprocess_open(self._cmd)
                 if 'Cannot connect to server' in raw_data[0]:
@@ -672,84 +639,24 @@ class Flowrecorder:
                 elif 'no matching objects' in raw_data[0]:
                     logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
                 else:
-                    self.parse_data_by_host(raw_data[0], record_file_type, intf)
                     self.record_total(raw_data[0], record_file_type, intf)
-                    #logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(intf, FLOW_USER_LOG_FOLDER))
         except Exception as e:
-            logger_recorder.error("do_csv_log() cannot be executed, {}".format(e))
+            logger_recorder.error("start_by_host() cannot be executed, {}".format(e))
             pass
-
 ################################################################################
-#       make subnet tree
+#      Def : Write row with generator
 ################################################################################
-    def makeSubnetTree(self, data_name):
-        result = SubnetTree()
-        data = eval(data_name)
-        if isinstance(data, dict):
-            for cidr, name in data.iteritems():
-                result[cidr] = name
-        else:
-            for cidr in data:
-                result[cidr] = str(cidr)
-        return result
-
-################################################################################
-#      Def : extract total from the cmd
-################################################################################
-    def record_total(self, raw_data, record_file_type, *args):
-        """
-        DEF record_total is the function that records file from the cmd into csv and txt
-        raw_data_row - the raw data,
-        record_file_type - type for txt or csv,
-        args[0] - interface name
-        """
+    def write_row(self, rows, reader, record_file_type, fieldnames, flow_time, rows_len, *args):
         try:
-            m = re.search(pattern, raw_data)
-            startidx = m.start()
-            endidx = m.end()
-            flow_time = raw_data[startidx:endidx]
-
-            # Get fieldnames
-            fieldnames = parse_fieldnames(raw_data)
-
-            # Make field pattern
-            pattern_02 = ''
-            for field in fieldnames:
-                pattern_02 += field+"|"
-
-            raw_data = re.sub(pattern, "", raw_data)
-            raw_data = re.sub(pattern_01, "", raw_data)
-            raw_data = re.sub(pattern_02, "", raw_data)
-            raw_data = re.sub(pattern_03, "", raw_data)
-            raw_data = re.sub(pattern_06, "", raw_data)
-#            reader = csv.DictReader(itertools.islice(raw_data.splitlines(), 0,
-#                                                     None),
-#                                    delimiter=' ',
-#                                    skipinitialspace=True,
-#                                    fieldnames=fieldnames)
-            reader = csv.DictReader(raw_data.splitlines(),
-                                    delimiter=' ',
-                                    skipinitialspace=True,
-                                    fieldnames=fieldnames)
-
-            result = sorted(reader, key=lambda d: d['srchost'])
-            #include = self._include
-            #include_subnet_tree = makeSubnetTree('INCLUDE')
-            # for
+            t1=time.time()
             count_values = 1
             labels = []
             labels = fieldnames
-            # do log for the users
-            for row in result:
+            for row in rows:
+                row['timestamp'] = flow_time
                 values = []
                 for label in fieldnames:
                     values.append(row[label])
-
-    #            value = []
-    #            for label in fieldnames:
-    #                value.append(row[label])
-    #            print value
-
                 middles = []
                 for label in labels:
                     middles.append('='*len(label))
@@ -763,42 +670,94 @@ class Flowrecorder:
                     labelLine.append('{0:<{1}}'.format(label, padding))  # generate a string with the variable whitespace padding
                     middleLine.append('{0:<{1}}'.format(middle, padding))
                     valueLine.append('{0:<{1}}'.format(value, padding))
+
                 # Add datetime
-                timestamp = 'timestamp'
-                labelLine.insert(0, '{0:<{1}}'.format(timestamp, len(str(flow_time))))
-                middleLine.insert(0, '{0:<{1}}'.format('='*len(timestamp), len(str(flow_time))))
-                valueLine.insert(0, '{0:<{1}}'.format(flow_time, len(str(flow_time))))
 
                 # record_file_type = 0 : csv, 1 : txt, 2 : both
                 if record_file_type == 1 or record_file_type == 2:
-################################################################################
-#      record total for txt
-################################################################################
+                    # cmd type is for total.
                     if not re.search('source_host|dest_host', self._cmd):
-                        if not (os.path.isfile(self._txt_logfilepath)):
-                            txt_file = open(self._txt_logfilepath, 'w')
-                            txt_file.close()
-                            if count_values >= 1 or count_values < len(result)+1:
-                                with open(self._txt_logfilepath, "a") as fh:
-                                    fh.write('    '.join(labelLine) + '\r\n')
-                                    #fh.write('    '.join(middleLine) + '\r\n')
-                            with open(self._txt_logfilepath, "a") as fh:
-                                fh.write('    '.join(valueLine)+'\r\n')
+                        if os.path.isfile(self._txt_logfilepath):
+                            with open(self._txt_logfilepath, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
                             count_values += 1
-
-                            if count_values == len(result)+1:
-                                count_values = 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
                         else:
-                            with open(self._txt_logfilepath, "a") as fh:
-                                fh.write('    '.join(valueLine)+'\r\n')
+                            test_file = open(self._txt_logfilepath, 'w')
+                            test_file.close()
+                            if count_values >= 1 or count_values < rows_len + 1:
+                                with open(self._txt_logfilepath, 'a') as fh:
+                                    fh.write('      '.join(labelLine) + '\r\n')
+                            with open(self._txt_logfilepath, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
                             count_values += 1
-                            if count_values == len(result)+1:
-                                count_values = 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+
+                    # CASE when source_host exist in CMD
+                    if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
+                        src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
+                        src_host = self._cmd[src.start()+12:src.end()]
+                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+                        for _intf in _intfs[0].split('\n'):
+                            if re.search(_intf, self._cmd):
+                                inf = re.search(_intf, self._cmd)
+                        outbound = self._cmd[inf.start():inf.end()]
+                        if outbound == self.d_interface['internal'][0]:
+                            filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
+
+                        if os.path.isfile(filename_by_src_path):
+                            with open(filename_by_src_path, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+                        else:
+                            test_file = open(filename_by_src_path, 'w')
+                            test_file.close()
+                            if count_values >= 1 or count_values < rows_len + 1:
+                                with open(filename_by_src_path, 'a') as fh:
+                                    fh.write('      '.join(labelLine) + '\r\n')
+                            with open(filename_by_src_path, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+
+                    #CASE when dest_host exist in CMD
+                    if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
+                        dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
+                        dst_host = self._cmd[dst.start()+10:dst.end()]
+                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+                        for _intf in _intfs[0].split('\n'):
+                            if re.search(_intf, self._cmd):
+                                inf = re.search(_intf, self._cmd)
+                        inbound = self._cmd[inf.start():inf.end()]
+                        if inbound == self.d_interface['external'][0]:
+                            filename_by_dst_path = "{}/{}{}/{}_inbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
+
+                        if os.path.isfile(filename_by_dst_path):
+                            with open(filename_by_dst_path, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+                        else:
+                            test_file = open(filename_by_dst_path, 'w')
+                            test_file.close()
+                            if count_values >= 1 or count_values < rows_len + 1:
+                                with open(filename_by_dst_path, 'a') as fh:
+                                    fh.write('      '.join(labelLine) + '\r\n')
+                            with open(filename_by_dst_path, 'a') as fh:
+                                fh.write('      '.join(valueLine) + '\r\n')
+                            count_values += 1
+                            if count_values == rows_len + 1:
+                                count_values += 1
+
+                # record total for csv
                 # record_file_type = 0 : csv, 1 : txt, 2 : both
                 if record_file_type == 0 or record_file_type == 2:
-################################################################################
-#      record total for csv
-################################################################################
                     if not re.search('source_host|dest_host', self._cmd):
                         if not (os.path.isfile(self._csv_logfilepath)):
                             csv_file = open(self._csv_logfilepath, 'w')
@@ -806,23 +765,115 @@ class Flowrecorder:
                             with open(self._csv_logfilepath, "a") as fh:
                                 fh.write(','.join(fieldnames))
                                 fh.write('\n')
-                                fh.write('{},'.format(flow_time))
                                 writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                 writer.writerow(row)
                         else:
                             with open(self._csv_logfilepath, "a") as fh:
+                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                writer.writerow(row)
+                    # CASE when source_host exist in CMD
+                    if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
+                        src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
+                        src_host = self._cmd[src.start()+12:src.end()]
+                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+                        for _intf in _intfs[0].split('\n'):
+                            if re.search(_intf, self._cmd):
+                                inf = re.search(_intf, self._cmd)
+                        outbound = self._cmd[inf.start():inf.end()]
+                        if outbound == self.d_interface['internal'][0]:
+                            filename_by_src_path = "{}/{}{}/{}_outbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
+                        if not (os.path.isfile(filename_by_src_path)):
+                            csv_file = open(filename_by_src_path, 'w')
+                            csv_file.close()
+                            with open(filename_by_src_path, "a") as fh:
+                                fh.write(','.join(fieldnames))
+                                fh.write('\n')
                                 fh.write('{},'.format(flow_time))
                                 writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                 writer.writerow(row)
+                        else:
+                            with open(filename_by_src_path, "a") as fh:
+                                fh.write('{},'.format(flow_time))
+                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                writer.writerow(row)
+                    # CASE when dest_host exist in CMD
+                    if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
+                        dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
+                        dst_host = self._cmd[dst.start()+10:dst.end()]
+                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+                        for _intf in _intfs[0].split('\n'):
+                            if re.search(_intf, self._cmd):
+                                inf = re.search(_intf, self._cmd)
+                        inbound = self._cmd[inf.start():inf.end()]
+                        if inbound == self.d_interface['external'][0]:
+                            filename_by_dst_path = "{}/{}{}/{}_inbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
+                        if not (os.path.isfile(filename_by_dst_path)):
+                            csv_file = open(filename_by_dst_path, 'w')
+                            csv_file.close()
+                            with open(filename_by_dst_path, "a") as fh:
+                                fh.write(','.join(fieldnames))
+                                fh.write('\n')
+                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                writer.writerow(row)
+                        else:
+                            with open(filename_by_dst_path, "a") as fh:
+                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                                writer.writerow(row)
+        except Exception as e:
+            logger_recorder.error("write_row() cannot be executed, {}".format(e))
+            pass
+        else:
+            t2 = time.time()
+            if record_file_type == 1 or record_file_type == 2:
+                print ("### txt extracted!")
+                print ("elapsed time : " + str(t2-t1))
+                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._txt_logfilepath))
+            if record_file_type == 0 or record_file_type == 2:
+                print ("### csv extracted!")
+                print ("elapsed time : " + str(t2-t1))
+                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._csv_logfilepath))
+################################################################################
+#      Def : extract total from the cmd
+################################################################################
+    def record_total(self, raw_data, record_file_type, *args):
+        """
+        DEF record_total is the function that records file from the cmd into csv and txt
+        raw_data_row - the raw data,
+        record_file_type - type for txt or csv,
+        args[0] - interface name
+        """
+        try:
+            m = re.search(pattern, raw_data)
+            flow_time = raw_data[m.start():m.end()]
+            # Get fieldnames
+            fieldnames = parse_fieldnames(raw_data)
+            # Make field pattern
+            pattern_02 = ''
+            for field in fieldnames:
+                pattern_02 += field+"|"
+
+            raw_data = re.sub(pattern_01, "", raw_data)
+            raw_data = re.sub(pattern_03, "", raw_data)
+            raw_data = re.sub(pattern_04, "", raw_data)
+            raw_data = re.sub(pattern_02, "", raw_data)
+            raw_data = re.sub(pattern_03, "", raw_data)
+
+            reader = csv.DictReader(raw_data.splitlines(),
+                                    delimiter=' ',
+                                    skipinitialspace=True,
+                                    fieldnames=fieldnames)
+
+            result = sorted(reader, key=lambda d: d['srchost'])
+            rows_len = len(result)
+            fieldnames.insert(0, 'timestamp')
+            rows = GetRow(result)
+            self.write_row(rows, reader, record_file_type, fieldnames, flow_time, rows_len, *args)
         except Exception as e:
             logger_recorder.error("record_total() cannot be executed, {}".format(e))
             pass
-        else:
-            logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._txt_logfilepath))
-            logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._csv_logfilepath))
-#
+
 ################################################################################
-#       Def : all users CMD TYPE 2
+#       Def : Extract data by subnetree
 ################################################################################
     def parse_data_by_host(self, raw_data, record_file_type, *args):
         """
@@ -836,6 +887,7 @@ class Flowrecorder:
             m = re.search(pattern, raw_data)
             startidx = m.start()
             endidx = m.end()
+
             flow_time = raw_data[startidx:endidx]
 
             # Get fieldnames
@@ -846,39 +898,34 @@ class Flowrecorder:
             for field in fieldnames:
                 pattern_02 += field+"|"
 
-            raw_data = re.sub(pattern, "", raw_data)
             raw_data = re.sub(pattern_01, "", raw_data)
+            raw_data = re.sub(pattern_03, "", raw_data)
+            raw_data = re.sub(pattern_04, "", raw_data)
             raw_data = re.sub(pattern_02, "", raw_data)
             raw_data = re.sub(pattern_03, "", raw_data)
-            raw_data = re.sub(pattern_06, "", raw_data)
-#            reader = csv.DictReader(itertools.islice(raw_data.splitlines(), 0,
-#                                                     None),
-#                                    delimiter=' ',
-#                                    skipinitialspace=True,
-#                                    fieldnames=fieldnames)
+
             reader = csv.DictReader(raw_data.splitlines(),
                                     delimiter=' ',
                                     skipinitialspace=True,
                                     fieldnames=fieldnames)
 
             result = sorted(reader, key=lambda d: d['srchost'])
-            #include = self._include
-            #include_subnet_tree = makeSubnetTree('INCLUDE')
-            # for
+            # get length of rows
+            rows_len = len(result)
+            # set for aligning txt
             count_values = 1
             labels = []
             labels = fieldnames
+            fieldnames.insert(0, 'timestamp')
+            count_df = 0
             # do log for the users
+            t1 = time.time()
             for row in result:
+                row['timestamp'] = flow_time
+                # for aligning txt
                 values = []
                 for label in fieldnames:
                     values.append(row[label])
-
-    #            value = []
-    #            for label in fieldnames:
-    #                value.append(row[label])
-    #            print value
-
                 middles = []
                 for label in labels:
                     middles.append('='*len(label))
@@ -892,76 +939,13 @@ class Flowrecorder:
                     labelLine.append('{0:<{1}}'.format(label, padding))  # generate a string with the variable whitespace padding
                     middleLine.append('{0:<{1}}'.format(middle, padding))
                     valueLine.append('{0:<{1}}'.format(value, padding))
-                # Add datetime
-                timestamp = 'timestamp'
-                labelLine.insert(0, '{0:<{1}}'.format(timestamp, len(str(flow_time))))
-                middleLine.insert(0, '{0:<{1}}'.format('='*len(timestamp), len(str(flow_time))))
-                valueLine.insert(0, '{0:<{1}}'.format(flow_time, len(str(flow_time))))
-################################################################################
-#      record total for txt
-################################################################################
-#                if not re.search('source_host|dest_host', self._cmd):
-#                    if not (os.path.isfile(self._txt_logfilepath)):
-#                        txt_file = open(self._txt_logfilepath, 'w')
-#                        txt_file.close()
-#                        if count_values >= 1 or count_values < len(result)+1:
-#                            with open(self._txt_logfilepath, "a") as fh:
-#                                fh.write('    '.join(labelLine) + '\r\n')
-#                                #fh.write('    '.join(middleLine) + '\r\n')
-#                        with open(self._txt_logfilepath, "a") as fh:
-#                            fh.write('    '.join(valueLine)+'\r\n')
-#                        count_values += 1
-#
-#                        if count_values == len(result)+1:
-#                            count_values = 1
-#                    else:
-#                        with open(self._txt_logfilepath, "a") as fh:
-#                            fh.write('    '.join(valueLine)+'\r\n')
-#                        count_values += 1
-#                        if count_values == len(result)+1:
-#                            count_values = 1
-#################################################################################
-##      record total for csv
-#################################################################################
-#                if not re.search('source_host|dest_host', self._cmd):
-#                    if not (os.path.isfile(self._csv_logfilepath)):
-#                        csv_file = open(self._csv_logfilepath, 'w')
-#                        csv_file.close()
-#                        with open(self._csv_logfilepath, "a") as fh:
-#                            fh.write(','.join(fieldnames))
-#                            fh.write('\n')
-#                            fh.write('{},'.format(flow_time))
-#                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-#                            writer.writerow(row)
-#                    else:
-#                        with open(self._csv_logfilepath, "a") as fh:
-#                            fh.write('{},'.format(flow_time))
-#                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-#                            writer.writerow(row)
-################################################################################
-    #            if count_values == 1:
-    #                print ('{} length of each result -> {}\r'.format(title_time, len(result)))
-    #                print ('\t'.join(labelLine) + '\r')
-    #                print ('\t'.join(middleLine) + '\n')
-
-    #            print ('\t'.join(valueLine)+'\r')
-    #            count_values += 1
-
-    #            if count_values == len(result)+1:
-    #                count_values = 1
-################################################################################
-#       EXTERNAL, this case, stm9
-################################################################################
-                #import pdb; pdb.set_trace()  # XXX BREAKPOINT
+                # EXTERNAL, this case, stm9
                 for ex_int in self._ex_interface:
                     if row['in_if'] == ex_int:
                         if row['dsthost'] in self._include_subnet_tree:
                             flowlog_csv_by_dsthost_path = self._logfolderpath + row['dsthost'] + '-' + row['in_if'] + '-inbound.csv'
                             flowlog_txt_by_dsthost_path = self._logfolderpath + row['dsthost'] + '-' + row['in_if'] + '-inbound.txt'
-################################################################################
-#       Parse CSV if row's in_if is STM9 and record_file_type = 0 : csv, 1 : txt
-#       2 : both
-################################################################################
+                            # Parse CSV if row's in_if is STM9 and record_file_type = 0 :csv, 1 :txt, 2 :both
                             if record_file_type == 0 or record_file_type == 2:
                                 if not (os.path.isfile(flowlog_csv_by_dsthost_path)):
                                     csv_file = open(flowlog_csv_by_dsthost_path, 'w')
@@ -969,48 +953,41 @@ class Flowrecorder:
                                     with open(flowlog_csv_by_dsthost_path, "a") as fh:
                                         fh.write(','.join(fieldnames))
                                         fh.write('\r\n')
-                                        fh.write('{},'.format(flow_time))
                                         writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                         writer.writerow(row)
                                 else:
                                     with open(flowlog_csv_by_dsthost_path, "a") as fh:
-                                        fh.write('{},'.format(flow_time))
                                         writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                         writer.writerow(row)
-################################################################################
-#       Parse TXT if row's in_if is STM9
-################################################################################
+                            # Parse TXT if row's in_if is STM9
                             if record_file_type == 1 or record_file_type == 2:
-                                if not (os.path.isfile(flowlog_txt_by_dsthost_path)):
+                                #
+                                if os.path.isfile(flowlog_txt_by_dsthost_path):
+                                    with open(flowlog_txt_by_dsthost_path, 'a') as fh:
+                                        fh.write('      '.join(valueLine) + '\r\n')
+                                    count_values += 1
+                                    if count_values == rows_len + 1:
+                                        count_values += 1
+                                else:
                                     txt_file = open(flowlog_txt_by_dsthost_path, 'w')
                                     txt_file.close()
-                                    if count_values >= 1 or count_values < len(result)+1:
-                                        with open(flowlog_txt_by_dsthost_path, "a") as fh:
-                                            fh.write('    '.join(labelLine) + '\r\n')
-                                            #fh.write('    '.join(middleLine) + '\r\n')
-                                    with open(flowlog_txt_by_dsthost_path, "a") as fh:
-                                        fh.write('    '.join(valueLine)+'\r\n')
+                                    if count_values >= 1 or count_values < rows_len + 1:
+                                        with open(flowlog_txt_by_dsthost_path, 'a') as fh:
+                                            fh.write('      '.join(labelLine) + '\r\n')
+                                    with open(flowlog_txt_by_dsthost_path, 'a') as fh:
+                                        fh.write('      '.join(valueLine) + '\r\n')
                                     count_values += 1
+                                    if count_values == rows_len + 1:
+                                        count_values += 1
+                                #
 
-                                    if count_values == len(result)+1:
-                                        count_values = 1
-                                else:
-                                    with open(flowlog_txt_by_dsthost_path, "a") as fh:
-                                        fh.write('    '.join(valueLine)+'\r\n')
-                                    count_values += 1
-                                    if count_values == len(result)+1:
-                                        count_values = 1
-################################################################################
-#       INTERNAL, this case, stm10
-################################################################################
+                # INTERNAL, this case, stm10
                 for in_int in self._in_interface:
                     if row['in_if'] == in_int:
                         if row['srchost'] in self._include_subnet_tree:
                             flowlog_csv_by_srchost_path = self._logfolderpath + row['srchost'] + '-' + row['in_if'] + '-outbound.csv'
                             flowlog_txt_by_srchost_path = self._logfolderpath + row['srchost'] + '-' + row['in_if'] + '-outbound.txt'
-################################################################################
-#       Parse CSV if row's in_if is STM10
-################################################################################
+                            # Parse CSV if row's in_if is STM10
                             if record_file_type == 0 or record_file_type == 2:
                                 if not (os.path.isfile(flowlog_csv_by_srchost_path)):
                                     csv_file = open(flowlog_csv_by_srchost_path, 'w')
@@ -1018,593 +995,39 @@ class Flowrecorder:
                                     with open(flowlog_csv_by_srchost_path, "a") as fh:
                                         fh.write(','.join(fieldnames))
                                         fh.write('\r\n')
-                                        fh.write('{},'.format(flow_time))
                                         writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                         writer.writerow(row)
                                 else:
                                     with open(flowlog_csv_by_srchost_path, "a") as fh:
-                                        fh.write('{},'.format(flow_time))
+                                        #fh.write('{}'.format(flow_time))
                                         writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                         writer.writerow(row)
-################################################################################
-#       Parse TXT if row's in_if is STM10
-################################################################################
+                            # Parse TXT if row's in_if is STM10
                             if record_file_type == 1 or record_file_type == 2:
-                                if not (os.path.isfile(flowlog_txt_by_srchost_path)):
+                                #
+                                if os.path.isfile(flowlog_txt_by_srchost_path):
+                                    with open(flowlog_txt_by_srchost_path, 'a') as fh:
+                                        fh.write('      '.join(valueLine) + '\r\n')
+                                    count_values += 1
+                                    if count_values == rows_len + 1:
+                                        count_values += 1
+                                else:
                                     txt_file = open(flowlog_txt_by_srchost_path, 'w')
                                     txt_file.close()
-                                    if count_values >= 1 or count_values < len(result)+1:
-                                        with open(flowlog_txt_by_srchost_path, "a") as output:
-                                            output.write('    '.join(labelLine) + '\r\n')
-                                            #output.write('    '.join(middleLine) + '\r\n')
-                                    with open(flowlog_txt_by_srchost_path, "a") as output:
-                                        output.write('    '.join(valueLine)+'\r\n')
+                                    if count_values >= 1 or count_values < rows_len + 1:
+                                        with open(flowlog_txt_by_srchost_path, 'a') as fh:
+                                            fh.write('      '.join(labelLine) + '\r\n')
+                                    with open(flowlog_txt_by_srchost_path, 'a') as fh:
+                                        fh.write('      '.join(valueLine) + '\r\n')
                                     count_values += 1
+                                    if count_values == rows_len + 1:
+                                        count_values += 1
 
-                                    if count_values == len(result)+1:
-                                        count_values = 1
-                                else:
-                                    with open(flowlog_txt_by_srchost_path, "a") as output:
-                                        output.write('    '.join(valueLine)+'\r\n')
-                                    count_values += 1
-
-                                    if count_values == len(result)+1:
-                                        count_values = 1
         except Exception as e:
             logger_recorder.error("parse_data_by_host() cannot be executed, {}".format(e))
             pass
         else:
+            t2=time.time()
+            print ("### by host extracted!")
+            print ("elapsed time : " + str(t2-t1))
             logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(args[0], FLOW_USER_LOG_FOLDER))
-#
-#    def record_txt(self):
-#        raw_data_for_field = subprocess_open(self._cmd_for_field)
-#        # ERR Routine
-#        if 'Cannot connect to server' in raw_data_for_field[0]:
-#            logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data_for_field[0]))
-#        elif 'does not exist' in raw_data_for_field[0]:
-#            logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data_for_field[0]))
-#        elif 'no matching objects' in raw_data_for_field[0]:
-#            logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data_for_field[0]))
-#        elif raw_data_for_field[0] != '' and raw_data_for_field[0] != '\n':
-#            fieldnames = parse_fieldnames(raw_data_for_field[0])
-#            pattern_02 = ''
-#            for field in fieldnames:
-#                pattern_02 += field+"|"
-#        txt = re.search('stm[0-9]+',self._txt_logfilepath)
-#        intf = self._txt_logfilepath[txt.start():txt.end()]
-#
-#        if not re.search('source_host|dest_host', self._cmd):
-#            if not (os.path.isfile(self._txt_logfilepath)):
-#                create_folder(self._foldername)
-#                txt_file = open(self._txt_logfilepath, 'w')
-#                txt_file.close()
-#
-#                raw_data = subprocess_open(self._cmd)
-#                txt_data = raw_data[0]
-#                m = re.search(pattern, txt_data)
-#                startidx = m.start()
-#                endidx = m.end()
-#                flow_time = txt_data[startidx:endidx]
-#
-#                txt_data = re.sub(pattern, "", txt_data)
-#                txt_data = re.sub(pattern_01, "", txt_data)
-#                txt_data = re.sub(pattern_02, "", txt_data)
-#                txt_data = re.sub(pattern_03, "", txt_data)
-#                reader = csv.DictReader(itertools.islice(txt_data.splitlines(), 1,
-#                                                            None),
-#                                        delimiter=' ',
-#                                        skipinitialspace=True,
-#                                        fieldnames=fieldnames)
-#
-#                for row in reader:
-#                    with open(self._txt_logfilepath, "a") as fh:
-#                        if not fieldnames[1] in row:
-#                            fh.write('{}\t'.format(flow_time))
-#                            fh.write('{}'.format(row))
-#                        else:
-#                            fh.write('timestamp\t\t')
-#                            fh.write('{}'.format(row))
-#            else:
-#                raw_data = subprocess_open(self._cmd)
-#                txt_data = raw_data[0]
-#                m = re.search(pattern, txt_data)
-#                startidx = m.start()
-#                endidx = m.end()
-#                flow_time = txt_data[startidx:endidx]
-#
-#                txt_data = re.sub(pattern, "", txt_data)
-#                txt_data = re.sub(pattern_01, "", txt_data)
-#                txt_data = re.sub(pattern_02, "", txt_data)
-#                txt_data = re.sub(pattern_03, "", txt_data)
-#                reader = csv.DictReader(itertools.islice(txt_data.splitlines(), 1,
-#                                                            None),
-#                                        delimiter=' ',
-#                                        skipinitialspace=True,
-#                                        fieldnames=fieldnames)
-#
-#                for row in reader:
-#                    with open(self._txt_logfilepath, "a") as fh:
-#                        if not fieldnames[1] in row:
-#                            fh.write('{}\t'.format(flow_time))
-#                            fh.write('{}'.format(row))
-#                        else:
-#                            fh.write('timestamp\t\t')
-#                            fh.write('{}'.format(row))
-
-
-################################################################################
-#       Write the txt type log from the command type 3
-################################################################################
-    def start_fr_txt(self):
-        try:
-            global is_extracted
-            #pattern = r'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
-            #pattern_01 = r'[-]{1,10}'
-            #pattern_03 = r'\s+\n'
-            #pattern_04 = r'Flows at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
-
-            raw_data = subprocess_open(self._cmd_for_field)
-            # ERR Routine
-            if 'Cannot connect to server' in raw_data[0]:
-                logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data[0]))
-            elif 'does not exist' in raw_data[0]:
-                logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data[0]))
-            elif 'no matching objects' in raw_data[0]:
-                logger_recorder.error("Cannot parse fieldname due to - {}".format(raw_data[0]))
-            elif raw_data[0] != '' and raw_data[0] != '\n':
-                fieldnames = parse_fieldnames(raw_data[0])
-                pattern_02 = ''
-                for field in fieldnames:
-                    pattern_02 += field+"|"
-
-            txt = re.search('stm[0-9]+',self._txt_logfilepath)
-            intf = self._txt_logfilepath[txt.start():txt.end()]
-###############################################################################
-# CASE when source_host exist in CMD
-###############################################################################
-            if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
-                src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
-                src_host = self._cmd[src.start()+12:src.end()]
-                inf = re.search('stm[0-9]+', self._cmd)
-                outbound = self._cmd[inf.start():inf.end()]
-                if outbound == self.d_interface['internal']:
-                    filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(
-                        FLOW_USER_LOG_FOLDER, self._foldername[0],
-                        self._foldername[1], src_host)
-                    #logger_monitor.info("{}/{}{}/{}_outbound_flows.txt".format(
-                    #    FLOW_USER_LOG_FOLDER, self._foldername[0],
-                    #    self._foldername[1], src_host))
-                if not (os.path.isfile(filename_by_src_path)):
-                    txt_by_src = open(filename_by_src_path, 'w')
-                    txt_by_src.close()
-                    proc = subprocess.Popen(self._cmd, shell=True,
-                                            stdout=subprocess.PIPE, bufsize=1)
-                    with proc.stdout:
-                        for line in iter(proc.stdout.readline, b''):
-                            if re.search(pattern, line):
-                                m = re.search(pattern, line)
-                                startidx = m.start()
-                                endidx = m.end()
-                                flow_time = line[startidx:endidx]
-                            line = re.sub(pattern_04, "", line)
-                            line = re.sub(pattern_01, "", line)
-    #                       line = re.sub(pattern_02, "", line)
-                            line = re.sub('"+', "", line)
-                            line = re.sub(pattern_03, "", line)
-                            # ERR Routine
-                            if 'Cannot connect to server' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, line))
-                            elif 'does not exist' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, line))
-                            elif 'no matching objects' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, line))
-                            elif line != '' and line != '\n':
-                                is_extracted = True
-                                fieldnames.insert(0, 'timestamp')
-                                with open(filename_by_src_path, "a") as fh:
-                                    if not fieldnames[1] in line:
-                                        fh.write('{}\t'.format(flow_time))
-                                        fh.write('{}'.format(line))
-                                    else:
-                                        fh.write('timestamp\t\t')
-                                        fh.write('{}'.format(line))
-                            else:
-                                pass
-                    if is_extracted:
-                        logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
-                else:
-                    proc = subprocess.Popen(self._cmd, shell=True,
-                                            stdout=subprocess.PIPE, bufsize=1)
-                    with proc.stdout:
-                        for line in iter(proc.stdout.readline, b''):
-                            # ER Routine
-                            if 'Cannot connect to server' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, line))
-                            elif 'does not exist' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, line))
-                            elif 'no matching objects' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, line))
-                            elif line != '' and line != '\n':
-                                is_extracted = True
-                                if re.search(pattern, line):
-                                    m = re.search(pattern, line)
-                                    startidx = m.start()
-                                    endidx = m.end()
-                                    flow_time = line[startidx:endidx]
-                                line = re.sub(pattern_04, "", line)
-                                line = re.sub(pattern_01, "", line)
-                                line = re.sub(pattern_02, "", line)
-                                line = re.sub('"+', "", line)
-                                line = re.sub(pattern_03, "", line)
-                                #re.sub(pattern_03, "\r\n", csv_data_row)
-                                with open(filename_by_src_path, "a") as fh:
-                                    fh.write('{}\t'.format(flow_time))
-                                    fh.write('{}'.format(line))
-                            else:
-                                pass
-                    if is_extracted:
-                        logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
-###############################################################################
-# CASE when dest_host exist in CMD
-###############################################################################
-            elif re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
-                dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
-                dst_host = self._cmd[dst.start()+10:dst.end()]
-                inf = re.search('stm[0-9]+', self._cmd)
-                inbound = self._cmd[inf.start():inf.end()]
-                if inbound == self.d_interface['external']:
-                    filename_by_dst_path = "{}/{}{}/{}_inbound_flows.txt".format(
-                        FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
-                if not (os.path.isfile(filename_by_dst_path)):
-                    txt_by_dst = open(filename_by_dst_path, 'w')
-                    txt_by_dst.close()
-                    proc = subprocess.Popen(self._cmd, shell=True,
-                                            stdout=subprocess.PIPE, bufsize=1)
-                    with proc.stdout:
-                        for line in iter(proc.stdout.readline, b''):
-                            if re.search(pattern, line):
-                                m = re.search(pattern, line)
-                                startidx = m.start()
-                                endidx = m.end()
-                                flow_time = line[startidx:endidx]
-                            line = re.sub(pattern_04, "", line)
-                            line = re.sub(pattern_01, "", line)
-    #                       line = re.sub(pattern_02, "", line)
-                            line = re.sub('"+', "", line)
-                            line = re.sub(pattern_03, "", line)
-                            # ERR Routine
-                            if 'Cannot connect to server' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, line))
-                            elif 'does not exist' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, line))
-                            elif 'no matching objects' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, line))
-                            elif line != '' and line != '\n':
-                                is_extracted = True
-                                fieldnames.insert(0, 'timestamp')
-                                with open(filename_by_dst_path, "a") as fh:
-                                    if not fieldnames[1] in line:
-                                        fh.write('{}\t'.format(flow_time))
-                                        fh.write('{}'.format(line))
-                                    else:
-                                        fh.write('timestamp\t\t')
-                                        fh.write('{}'.format(line))
-                            else:
-                                pass
-                    if is_extracted:
-                        logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(dst_host, filename_by_dst_path))
-                else:
-                    proc = subprocess.Popen(self._cmd, shell=True,
-                                            stdout=subprocess.PIPE, bufsize=1)
-                    with proc.stdout:
-                        for line in iter(proc.stdout.readline, b''):
-                            # ER Routine
-                            if 'Cannot connect to server' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, line))
-                            elif 'does not exist' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, line))
-                            elif 'no matching objects' in line:
-                                is_extracted = False
-                                logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, line))
-                                #logger_recorder.error("{} - {}".format(line, self._cmd))
-                            elif line != '' and line != '\n':
-                                is_extracted = True
-                                if re.search(pattern, line):
-                                    m = re.search(pattern, line)
-                                    startidx = m.start()
-                                    endidx = m.end()
-                                    flow_time = line[startidx:endidx]
-                                line = re.sub(pattern_04, "", line)
-                                line = re.sub(pattern_01, "", line)
-                                line = re.sub(pattern_02, "", line)
-                                line = re.sub('"+', "", line)
-                                line = re.sub(pattern_03, "", line)
-                                #re.sub(pattern_03, "\r\n", csv_data_row)
-                                with open(filename_by_dst_path, "a") as fh:
-                                    fh.write('{}\t'.format(flow_time))
-                                    fh.write('{}'.format(line))
-                            else:
-                                pass
-                    if is_extracted:
-                        logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(dst_host, filename_by_dst_path))
-###############################################################################
-# CASE when source_host and dest_host don't exist in CMD
-###############################################################################
-            if not re.search('source_host|dest_host', self._cmd):
-                if not (os.path.isfile(self._txt_logfilepath)):
-                    create_folder(self._foldername)
-                    txt_file = open(self._txt_logfilepath, 'w')
-                    txt_file.close()
-                    proc = subprocess.Popen(self._cmd, shell=True,
-                                            stdout=subprocess.PIPE, bufsize=1)
-                    with proc.stdout:
-                        for line in iter(proc.stdout.readline, b''):
-                            if re.search(pattern, line):
-                                m = re.search(pattern, line)
-                                startidx = m.start()
-                                endidx = m.end()
-                                flow_time = line[startidx:endidx]
-                            line = re.sub(pattern_04, "", line)
-                            line = re.sub(pattern_01, "", line)
-    #                        line = re.sub(pattern_02, "", line)
-                            line = re.sub('"+', "", line)
-                            line = re.sub(pattern_03, "", line)
-                            # ERR Routine
-                            if 'Cannot connect to server' in line:
-                                is_extracted = False
-                                #logger_recorder.error("{} - {}".format(line, self._cmd))
-                            elif 'does not exist' in line:
-                                is_extracted = False
-                                #logger_recorder.error("{} - {}".format(line, self._cmd))
-                            elif 'no matching objects' in line:
-                                is_extracted = False
-                                #logger_recorder.error("{} - {}".format(line, self._cmd))
-                            elif line != '' and line != '\n':
-                                is_extracted = True
-                                fieldnames.insert(0, 'timestamp')
-                                with open(self._txt_logfilepath, "a") as fh:
-                                    if not fieldnames[1] in line:
-                                        fh.write('{}\t'.format(flow_time))
-                                        fh.write('{}'.format(line))
-                                    else:
-                                        fh.write('timestamp\t\t')
-                                        fh.write('{}'.format(line))
-                            else:
-                                pass
-                    if is_extracted:
-                        logger_recorder.info('Flow info default from interfaces {} is extracted to {} \
-successfully!'.format(intf, self._txt_logfilepath))
-                else:
-                    proc = subprocess.Popen(self._cmd, shell=True,
-                                           stdout=subprocess.PIPE, bufsize=1)
-                    with proc.stdout:
-                        for line in iter(proc.stdout.readline, b''):
-                            # ER Routine
-                            if 'Cannot connect to server' in line:
-                                is_extracted = False
-                                #logger_recorder.error("{} - {}".format(line, self._cmd))
-                            elif 'does not exist' in line:
-                                is_extracted = False
-                                #logger_recorder.error("{} - {}".format(line, self._cmd))
-                            elif 'no matching objects' in line:
-                                is_extracted = False
-                                #logger_recorder.error("{} - {}".format(line, self._cmd))
-                            elif line != '' and line != '\n':
-                                is_extracted = True
-                                if re.search(pattern, line):
-                                    m = re.search(pattern, line)
-                                    startidx = m.start()
-                                    endidx = m.end()
-                                    flow_time = line[startidx:endidx]
-                                    line = re.sub(pattern_04, "", line)
-                                line = re.sub(pattern_01, "", line)
-                                line = re.sub(pattern_02, "", line)
-                                line = re.sub('"+', "", line)
-                                line = re.sub(pattern_03, "", line)
-                                #re.sub(pattern_03, "\r\n", csv_data_row)
-                                with open(self._txt_logfilepath, "a") as fh:
-                                    fh.write('{}\t'.format(flow_time))
-                                    fh.write('{}'.format(line))
-                            else:
-                                pass
-                    if is_extracted:
-                        logger_recorder.info('Flow info default from interfaces {} is extracted to {} \
-successfully!'.format(intf, self._txt_logfilepath))
-        except Exception as e:
-            logger_recorder.error("start_fr_txt() cannot be executed, {}".format(e))
-            pass
-
-################################################################################
-#       Write the csv type log from the command
-################################################################################
-    def start_fr_csv(self):
-        try:
-            csv = re.search('stm[0-9]+',self._csv_logfilepath)
-            intf = self._csv_logfilepath[csv.start():csv.end()]
-###############################################################################
-# CASE when source_host exist in CMD
-###############################################################################
-            if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
-                src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
-                src_host = self._cmd[src.start()+12:src.end()]
-                inf = re.search('stm[0-9]+', self._cmd)
-                outbound = self._cmd[inf.start():inf.end()]
-                if outbound == self.d_interface['internal']:
-                    filename_by_src_path = "{}/{}{}/{}_outbound_flows.csv".format(
-                        FLOW_USER_LOG_FOLDER, self._foldername[0],
-                        self._foldername[1], src_host)
-                    #logger_monitor.info("{}/{}{}/{}_outbound_flows.txt".format(
-                    #    FLOW_USER_LOG_FOLDER, self._foldername[0],
-                    #    self._foldername[1], src_host))
-                if not (os.path.isfile(filename_by_src_path)):
-                    create_folder(self._foldername)
-                    csv_by_src = open(filename_by_src_path, 'w')
-                    csv_by_src.close()
-                    raw_data = subprocess_open(self._cmd)
-                    if 'Cannot connect to server' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, raw_data[0]))
-                    elif 'does not exist' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, raw_data[0]))
-                    elif 'no matching objects' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, raw_data[0]))
-                    else:
-                        fieldnames = parse_fieldnames(raw_data[0])
-                        fieldnames.insert(0, 'timestamp')
-                        with open(filename_by_src_path, "a") as fh:
-                            fh.write(','.join(fieldnames))
-                            fh.write('\r\n')
-                        time.sleep(1)
-                        self.parse_fr_csv(raw_data[0], filename_by_src_path, src_host)
-                        #logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
-                else:
-                    raw_data = subprocess_open(self._cmd)
-                    if 'Cannot connect to server' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, raw_data[0]))
-                    elif 'does not exist' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, raw_data[0]))
-                    elif 'no matching objects' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_src_path, raw_data[0]))
-                    else:
-                        self.parse_fr_csv(raw_data[0], filename_by_src_path, src_host)
-                        #logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(src_host, filename_by_src_path))
-###############################################################################
-# CASE when dest_host exist in CMD
-###############################################################################
-            elif re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
-                dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
-                dst_host = self._cmd[dst.start()+10:dst.end()]
-                inf = re.search('stm[0-9]+', self._cmd)
-                inbound = self._cmd[inf.start():inf.end()]
-                if inbound == self.d_interface['external']:
-                    filename_by_dst_path = "{}/{}{}/{}_inbound_flows.csv".format(
-                        FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
-                if not (os.path.isfile(filename_by_dst_path)):
-                    create_folder(self._foldername)
-                    csv_by_dst = open(filename_by_dst_path, 'w')
-                    csv_by_dst.close()
-                    raw_data = subprocess_open(self._cmd)
-                    if 'Cannot connect to server' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, raw_data[0]))
-                    elif 'does not exist' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, raw_data[0]))
-                    elif 'no matching objects' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, raw_data[0]))
-                    else:
-                        fieldnames = parse_fieldnames(raw_data[0])
-                        fieldnames.insert(0, 'timestamp')
-                        with open(filename_by_dst_path, "a") as fh:
-                            fh.write(','.join(fieldnames))
-                            fh.write('\r\n')
-                        time.sleep(1)
-                        self.parse_fr_csv(raw_data[0], filename_by_dst_path, dst_host)
-                        #logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(dst_host, filename_by_dst_path))
-                else:
-                    raw_data = subprocess_open(self._cmd)
-                    if 'Cannot connect to server' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, raw_data[0]))
-                    elif 'does not exist' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, raw_data[0]))
-                    elif 'no matching objects' in raw_data[0]:
-                        logger_recorder.error("{} is not extracted! - {}".format(filename_by_dst_path, raw_data[0]))
-                    else:
-                        self.parse_fr_csv(raw_data[0], filename_by_dst_path, dst_host)
-                        #logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(dst_host, filename_by_dst_path))
-###############################################################################
-# CASE when source_host and dest_host don't exist in CMD
-###############################################################################
-            if not re.search('source_host|dest_host', self._cmd):
-                if not (os.path.isfile(self._csv_logfilepath)):
-                    create_folder(self._foldername)
-                    csv_file = open(self._csv_logfilepath, 'w')
-                    csv_file.close()
-                    raw_data = subprocess_open(self._cmd)
-                    if 'Cannot connect to server' in raw_data[0]:
-                        logger_recorder.error("{} - {}".format(self._cmd, raw_data[0]))
-                    elif 'does not exist' in raw_data[0]:
-                        logger_recorder.error("{} - {}".format(self._cmd, raw_data[0]))
-                    elif 'no matching objects' in raw_data[0]:
-                        logger_recorder.error("{} - {}".format(self._cmd, raw_data[0]))
-#                        logger_recorder.error("{} - {}".format(raw_data[0], self._cmd))
-                    else:
-                        fieldnames = parse_fieldnames(raw_data[0])
-                        fieldnames.insert(0, 'timestamp')
-                        with open(self._csv_logfilepath, "a") as fh:
-                            fh.write(','.join(fieldnames))
-                            fh.write('\r\n')
-                        time.sleep(1)
-                        self.parse_fr_csv(raw_data[0], self._csv_logfilepath, intf)
-                        #logger_recorder.info('Flow info default from interfaces {} is extracted to {} successfully!'.format(intf, self._csv_logfilepath))
-                else:
-                    raw_data = subprocess_open(self._cmd)
-                    if 'Cannot connect to server' in raw_data[0]:
-                        logger_recorder.error("{} - {}".format(self._cmd, raw_data[0]))
-                    elif 'does not exist' in raw_data[0]:
-                        logger_recorder.error("{} - {}".format(self._cmd, raw_data[0]))
-                    elif 'no matching objects' in raw_data[0]:
-                        logger_recorder.error("{} - {}".format(self._cmd, raw_data[0]))
-                    else:
-                        self.parse_fr_csv(raw_data[0], self._csv_logfilepath, intf)
-                        #logger_recorder.info('Flow info default from interfaces {} is extracted to {} successfully!'.format(intf, self._csv_logfilepath))
-        except Exception as e:
-            logger_recorder.error("start_fr_csv() cannot be executed, {}".format(e))
-            pass
-
-################################################################################
-#       Parse the data into csv data
-#       csv_data_row : data from command
-#       logpath : path to write data
-################################################################################
-    def parse_fr_csv(self, csv_data_row, logpath, *args):
-        try:
-            #pattern = r'[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'
-            #pattern_01 = r'[-]{1,10}'
-            #pattern_03 = r'\s+\n'
-            m = re.search(pattern, csv_data_row)
-            startidx = m.start()
-            endidx = m.end()
-            flow_time = csv_data_row[startidx:endidx]
-
-            # Get fieldnames
-            fieldnames = parse_fieldnames(csv_data_row)
-            # Make field pattern
-            pattern_02 = ''
-            for field in fieldnames:
-                pattern_02 += field+"|"
-
-            csv_data_row = re.sub(pattern, "", csv_data_row)
-            csv_data_row = re.sub(pattern_01, "", csv_data_row)
-            csv_data_row = re.sub(pattern_02, "", csv_data_row)
-            csv_data_row = re.sub(pattern_03, "", csv_data_row)
-            #csv_data_row = re.sub(pattern_05, "", csv_data_row)
-            reader = csv.DictReader(itertools.islice(csv_data_row.splitlines(),
-                                                     2, None),
-                                    delimiter=' ',
-                                    skipinitialspace=True,
-                                    fieldnames=fieldnames)
-            for row in reader:
-#                for value in row.values():
-#                    if re.search('\n', value):
-#                        import pdb; pdb.set_trace()  # XXX BREAKPOINT
-                with open(logpath, "a") as fh:
-                    fh.write('{},'.format(flow_time))
-                    writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                    writer.writerow(row)
-        except Exception as e:
-            logger_recorder.error("parse_fr_csv() cannot be executed, {}".format(e))
-            pass
-        else:
-            if re.search('[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', args[0]):
-                logger_recorder.info('Flow info host {} extracted to {} successfully!'.format(args[0], logpath))
-            else:
-                logger_recorder.info('Flow info default from interfaces {} is extracted to {} successfully!'.format(args[0], logpath))
