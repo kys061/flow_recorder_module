@@ -86,8 +86,10 @@ pattern_07 = r'Flows at '
 #
 is_extracted = False
 #
-err_lists = ['Cannot connect to server', 'does not exist', 'no matching objects']
-
+err_lists = ['Cannot connect to server', 'does not exist', 'no matching objects',
+             'waiting for server', 'cannot connect to server']
+#
+get_interface_cmd = 'echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\''
 ################################################################################
 #                       Common Module
 ################################################################################
@@ -551,18 +553,23 @@ class Flowrecorder:
         print(self._include_subnet_tree)
 
     def check_error(self, raw_data):
-        for err in err_lists:
-            if err in raw_data:
-                err_marked = True
-                err_contents = err
-            else:
-                err_marked = False
-        if err_marked:
-            err_contents = re.sub(r"\n", "", err_contents)
-            logger_recorder.error('{} - CMD : [ {} ]'.format(err_contents, self._cmd))
-            return True
+        if raw_data != '':
+            for err in err_lists:
+                if err in raw_data:
+                    err_marked = True
+                    err_contents = re.sub(r"\n", "", err)
+                    logger_recorder.error('failed from rest cli, msg : {}, CMD : [ {} ]'.format(err_contents, self._cmd))
+                    return True
+                else:
+                    err_marked = False
+            if not err_marked:
+                return False
         else:
-            return False
+            try:
+                raise Exception('NullDataError - raw_data is Null')
+            except Exception as e:
+                logger_recorder.error('{}'.format(e))
+                pass
 
 ################################################################################
 #       Def : start recording for record_cmd_type
@@ -570,7 +577,7 @@ class Flowrecorder:
 ################################################################################
     def start(self, record_file_type, record_cmd_type):
         try:
-            _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+            _intfs = subprocess_open(get_interface_cmd)
             for _intf in _intfs[0].split('\n'):
                 if re.search(_intf, self._cmd):
                     m = re.search(_intf, self._cmd)
@@ -585,7 +592,7 @@ class Flowrecorder:
             if not (os.path.isdir(self._usersfolder)):
                 create_folder(self._foldername)
                 if not err_status:
-                    logger_recorder.info('Success from REST cli, CMD : [ {} ]'.format(self._cmd))
+                    logger_recorder.info('success from rest cli, CMD : [ {} ]'.format(self._cmd))
                     if record_cmd_type == 0:
                         self.record_total(raw_data[0], record_file_type, intf)
                     if record_cmd_type == 1:
@@ -598,7 +605,7 @@ class Flowrecorder:
                         self.parse_data_by_host(raw_data[0], record_file_type, intf)
             else:
                 if not err_status:
-                    logger_recorder.info('no Error from cli\'s cmd - {}'.format(self._cmd))
+                    logger_recorder.info('success from rest cli, CMD : [ {} ]'.format(self._cmd))
                     if record_cmd_type == 0:
                         self.record_total(raw_data[0], record_file_type, intf)
                     if record_cmd_type == 1:
