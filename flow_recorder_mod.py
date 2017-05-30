@@ -28,8 +28,9 @@ import csv
 import logging
 import tarfile
 import pandas as pd
-import itertools
-from tabulate import tabulate
+
+USERNAME = 'admin'
+PASSWORD = 'admin'
 
 # Init path and filename
 FLOW_LOG_FOLDER_PATH = r'/var/log/flows'
@@ -89,7 +90,7 @@ is_extracted = False
 err_lists = ['Cannot connect to server', 'does not exist', 'no matching objects',
              'waiting for server', 'cannot connect to server']
 #
-get_interface_cmd = 'echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\''
+get_interface_cmd = 'echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py '+USERNAME+':'+PASSWORD+'@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\''
 ################################################################################
 #                       Common Module
 ################################################################################
@@ -578,7 +579,8 @@ class Flowrecorder:
     def start(self, record_file_type, record_cmd_type):
         try:
             _intfs = subprocess_open(get_interface_cmd)
-            for _intf in _intfs[0].split('\n'):
+            _intfs = [__intf for __intf in _intfs[0].split('\n') if __intf]
+            for _intf in _intfs:
                 if re.search(_intf, self._cmd):
                     m = re.search(_intf, self._cmd)
             intf = self._cmd[m.start():m.end()]
@@ -666,7 +668,7 @@ class Flowrecorder:
 #           *args - added for preparing increased parameter,
 #           now args is intface's name(intf)
 ################################################################################
-    def write_row(self, rows, reader, record_file_type, fieldnames, flow_time, rows_len, *args):
+    def write_row(self, rows, reader, record_file_type, fieldnames, flow_time, rows_len, intf):
         try:
             t1=time.time()
             count_values = 1
@@ -719,12 +721,13 @@ class Flowrecorder:
                     if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
                         src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         src_host = self._cmd[src.start()+12:src.end()]
-                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
-                        for _intf in _intfs[0].split('\n'):
-                            if re.search(_intf, self._cmd):
-                                inf = re.search(_intf, self._cmd)
-                        outbound = self._cmd[inf.start():inf.end()]
-                        if outbound == self.d_interface['internal'][0]:
+#                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+#                        for _intf in _intfs[0].split('\n'):
+#                            if re.search(_intf, self._cmd):
+#                                inf = re.search(_intf, self._cmd)
+#                        outbound = self._cmd[inf.start():inf.end()]
+                        outbound = intf
+                        if outbound in self.d_interface['internal']:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
 
                         if os.path.isfile(filename_by_src_path):
@@ -749,12 +752,13 @@ class Flowrecorder:
                     if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
                         dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         dst_host = self._cmd[dst.start()+10:dst.end()]
-                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
-                        for _intf in _intfs[0].split('\n'):
-                            if re.search(_intf, self._cmd):
-                                inf = re.search(_intf, self._cmd)
-                        inbound = self._cmd[inf.start():inf.end()]
-                        if inbound == self.d_interface['external'][0]:
+#                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+#                        for _intf in _intfs[0].split('\n'):
+#                            if re.search(_intf, self._cmd):
+#                                inf = re.search(_intf, self._cmd)
+#                        inbound = self._cmd[inf.start():inf.end()]
+                        inbound = intf
+                        if inbound in self.d_interface['external']:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
 
                         if os.path.isfile(filename_by_dst_path):
@@ -795,12 +799,13 @@ class Flowrecorder:
                     if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
                         src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         src_host = self._cmd[src.start()+12:src.end()]
-                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
-                        for _intf in _intfs[0].split('\n'):
-                            if re.search(_intf, self._cmd):
-                                inf = re.search(_intf, self._cmd)
-                        outbound = self._cmd[inf.start():inf.end()]
-                        if outbound == self.d_interface['internal'][0]:
+#                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+#                        for _intf in _intfs[0].split('\n'):
+#                            if re.search(_intf, self._cmd):
+#                                inf = re.search(_intf, self._cmd)
+#                        outbound = self._cmd[inf.start():inf.end()]
+                        outbound = intf
+                        if outbound in self.d_interface['internal']:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
                         if not (os.path.isfile(filename_by_src_path)):
                             csv_file = open(filename_by_src_path, 'w')
@@ -820,12 +825,13 @@ class Flowrecorder:
                     if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
                         dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         dst_host = self._cmd[dst.start()+10:dst.end()]
-                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
-                        for _intf in _intfs[0].split('\n'):
-                            if re.search(_intf, self._cmd):
-                                inf = re.search(_intf, self._cmd)
-                        inbound = self._cmd[inf.start():inf.end()]
-                        if inbound == self.d_interface['external'][0]:
+#                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+#                        for _intf in _intfs[0].split('\n'):
+#                            if re.search(_intf, self._cmd):
+#                                inf = re.search(_intf, self._cmd)
+#                        inbound = self._cmd[inf.start():inf.end()]
+                        inbound = intf
+                        if inbound in self.d_interface['external']:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
                         if not (os.path.isfile(filename_by_dst_path)):
                             csv_file = open(filename_by_dst_path, 'w')
@@ -847,15 +853,15 @@ class Flowrecorder:
             if record_file_type == 1 or record_file_type == 2:
                 print ("### txt extracted!")
                 print ("elapsed time : " + str(t2-t1))
-                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._txt_logfilepath))
+                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(intf, self._txt_logfilepath))
             if record_file_type == 0 or record_file_type == 2:
                 print ("### csv extracted!")
                 print ("elapsed time : " + str(t2-t1))
-                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._csv_logfilepath))
+                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(intf, self._csv_logfilepath))
 ################################################################################
 #      Def : extract total from the cmd
 ################################################################################
-    def record_total(self, raw_data, record_file_type, *args):
+    def record_total(self, raw_data, record_file_type, intf):
         """
         DEF record_total is the function that records file from the cmd into csv and txt
         raw_data_row - the raw data,
@@ -887,7 +893,7 @@ class Flowrecorder:
             rows_len = len(result)
             fieldnames.insert(0, 'timestamp')
             rows = GetRow(result)
-            self.write_row(rows, reader, record_file_type, fieldnames, flow_time, rows_len, *args)
+            self.write_row(rows, reader, record_file_type, fieldnames, flow_time, rows_len, intf)
         except Exception as e:
             logger_recorder.error("record_total() cannot be executed, {}".format(e))
             pass
