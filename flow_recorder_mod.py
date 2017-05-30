@@ -25,10 +25,10 @@ import shutil
 import time
 import re
 import csv
-import itertools
 import logging
 import tarfile
 import pandas as pd
+import itertools
 from tabulate import tabulate
 
 # Init path and filename
@@ -86,6 +86,10 @@ pattern_07 = r'Flows at '
 #
 is_extracted = False
 #
+err_lists = ['Cannot connect to server', 'does not exist', 'no matching objects',
+             'waiting for server', 'cannot connect to server']
+#
+get_interface_cmd = 'echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\''
 ################################################################################
 #                       Common Module
 ################################################################################
@@ -548,31 +552,47 @@ class Flowrecorder:
         print(self._logfolderpath)
         print(self._include_subnet_tree)
 
+    def check_error(self, raw_data):
+        if raw_data != '':
+            for err in err_lists:
+                if err in raw_data:
+                    err_marked = True
+                    err_contents = re.sub(r"\n", "", err)
+                    logger_recorder.error('failed from rest cli, msg : {}, CMD : [ {} ]'.format(err_contents, self._cmd))
+                    return True
+                else:
+                    err_marked = False
+            if not err_marked:
+                return False
+        else:
+            try:
+                raise Exception('NullDataError - raw_data is Null')
+            except Exception as e:
+                logger_recorder.error('{}'.format(e))
+                pass
+
 ################################################################################
 #       Def : start recording for record_cmd_type
 #       0:all, 1:all and users in subnetree, 2:by host, 3:0,1,2
 ################################################################################
     def start(self, record_file_type, record_cmd_type):
         try:
-            _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+            _intfs = subprocess_open(get_interface_cmd)
             for _intf in _intfs[0].split('\n'):
                 if re.search(_intf, self._cmd):
                     m = re.search(_intf, self._cmd)
-
             intf = self._cmd[m.start():m.end()]
+
+            t1=time.time()
+            raw_data = subprocess_open(self._cmd)
+            t2 = time.time()
+            print ("elapsed time from REST API : " + str(t2-t1))
+            err_status = self.check_error(raw_data[0])
+
             if not (os.path.isdir(self._usersfolder)):
                 create_folder(self._foldername)
-                t1=time.time()
-                raw_data = subprocess_open(self._cmd)
-                t2 = time.time()
-                print ("elapsed time from REST API : " + str(t2-t1))
-                if 'Cannot connect to server' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                elif 'does not exist' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                elif 'no matching objects' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                else:
+                if not err_status:
+                    logger_recorder.info('success from rest cli, CMD : [ {} ]'.format(self._cmd))
                     if record_cmd_type == 0:
                         self.record_total(raw_data[0], record_file_type, intf)
                     if record_cmd_type == 1:
@@ -584,17 +604,8 @@ class Flowrecorder:
                         self.record_total(raw_data[0], record_file_type, intf)
                         self.parse_data_by_host(raw_data[0], record_file_type, intf)
             else:
-                t1=time.time()
-                raw_data = subprocess_open(self._cmd)
-                t2 = time.time()
-                print ("elapsed time from REST API : " + str(t2-t1))
-                if 'Cannot connect to server' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                elif 'does not exist' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                elif 'no matching objects' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                else:
+                if not err_status:
+                    logger_recorder.info('success from rest cli, CMD : [ {} ]'.format(self._cmd))
                     if record_cmd_type == 0:
                         self.record_total(raw_data[0], record_file_type, intf)
                     if record_cmd_type == 1:
@@ -606,10 +617,11 @@ class Flowrecorder:
                         self.record_total(raw_data[0], record_file_type, intf)
                         self.parse_data_by_host(raw_data[0], record_file_type, intf)
         except Exception as e:
-            logger_recorder.error("start_by_subnetree() cannot be executed, {}".format(e))
+            logger_recorder.error("start() cannot be executed, {}".format(e))
             pass
 ################################################################################
 #       Def :  Extract data by HOST # CMD TYPE 3
+#              This function is depricated.
 ################################################################################
     def start_by_host(self, record_file_type):
         try:
@@ -645,6 +657,14 @@ class Flowrecorder:
             pass
 ################################################################################
 #      Def : Write row with generator
+#           rows - row from GetRow class's Generator container
+#           reader - reader obj from record total()
+#           record_file_type - file type trying to write txt or csv
+#           fieldnames - fieldnames
+#           flow_time - The time extracted from REST API
+#           rows_len - Length of rows extracted
+#           *args - added for preparing increased parameter,
+#           now args is intface's name(intf)
 ################################################################################
     def write_row(self, rows, reader, record_file_type, fieldnames, flow_time, rows_len, *args):
         try:
