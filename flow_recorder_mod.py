@@ -48,7 +48,7 @@ MONITOR_SCRIPT_FILENAME = r'flow_recorder_monitor.py'
 LOGSIZE = 50000000 # 1000 = 1Kbyte, 1000000 = 1Mbyte, 50000000 = 50Mbyte
 # check if archive is done or not.
 archive_count = 1
-
+LIMIT_DISK_SIZE = 55
 # recorder logger setting
 logger_recorder = logging.getLogger('saisei.flow.recorder')
 logger_recorder.setLevel(logging.INFO)
@@ -177,6 +177,11 @@ def init_logger():
     logger_monitor.addFilter(filter)
     logger_common.addHandler(handler)
     logger_common.addFilter(filter)
+
+def get_root_disk_size():
+    cmd = r"df -h |grep '/$' |egrep '[0-9]+%' -o |cut -d '%' -f1"
+    size = subprocess_open(cmd)
+    return size[0]
 
 def get_filename(filenames):
     if iter(filenames) is iter(filenames):  # deny interator!!
@@ -358,23 +363,71 @@ def archive_rotate_test(do_compress, archive_period):
 def archive_rotate(do_compress, archive_period):
     try:
         global archive_count
+        # check disk size and delete folder and files
+        if get_root_disk_size() > LIMIT_DISK_SIZE:
+            archive_mon = get_archive_month(archive_period)
+            if archive_mon['archiving_month.month'] < 10:
+                delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']),
+                               FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
+                delete_folder_name = str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])
+                if (os.path.isdir(delete_path[0]) and os.path.isdir(delete_path[1])):
+                    # delete files archive month ago
+                    try:
+                        for dirpath in delete_path:
+                            filenames = GetFilenames(dirpath) # get filnames from class
+                            delete_file(dirpath, filenames)
+                    except Exception as e:
+                        logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
+                        pass
+                    else:
+                        logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
+                else:
+                    delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month']),
+                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])]
+                    delete_folder_name = str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])
+                    # delete files last month ago
+                    try:
+                        for dirpath in delete_path:
+                            filenames = GetFilenames(dirpath) # get filnames from class
+                            delete_file(dirpath, filenames)
+                    except Exception as e:
+                        logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
+                        pass
+                    else:
+                        logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
+
+            else:
+                delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']),
+                               FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
+                delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])
+                # delete files archive period ago
+                try:
+                    for dirpath in delete_path:
+                        filenames = GetFilenames(dirpath) # get filnames from class
+                        delete_file(dirpath, filenames)
+                except Exception as e:
+                    logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
+                    pass
+                else:
+                    logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
+
         if is_month_begin():
             archive_mon = get_archive_month(archive_period)
             if archive_mon['last_month.month'] < 10:
                 compress_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month']),
-                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])]
+                                 FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])]
                 compress_folder_name = str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])
             else:
                 compress_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['last_month.year']) + str(archive_mon['last_month.month']),
-                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + str(archive_mon['last_month.month'])]
+                                 FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + str(archive_mon['last_month.month'])]
                 compress_folder_name = str(archive_mon['last_month.year']) + str(archive_mon['last_month.month'])
             if archive_mon['archiving_month.month'] < 10:
                 delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']),
-                            FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
+                               FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
                 delete_folder_name = str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])
             else:
                 delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']),
-                            FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
+                               FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
                 delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])
 
             if archive_count == 1:
@@ -585,10 +638,7 @@ class Flowrecorder:
                     m = re.search(_intf, self._cmd)
             intf = self._cmd[m.start():m.end()]
 
-            t1=time.time()
             raw_data = subprocess_open(self._cmd)
-            t2 = time.time()
-            print ("elapsed time from REST API : " + str(t2-t1))
             err_status = self.check_error(raw_data[0])
 
             if not (os.path.isdir(self._usersfolder)):
@@ -670,7 +720,6 @@ class Flowrecorder:
 ################################################################################
     def write_row(self, rows, reader, record_file_type, fieldnames, flow_time, rows_len, intf):
         try:
-            t1=time.time()
             count_values = 1
             labels = []
             labels = fieldnames
@@ -849,14 +898,9 @@ class Flowrecorder:
             logger_recorder.error("write_row() cannot be executed, {}".format(e))
             pass
         else:
-            t2 = time.time()
             if record_file_type == 1 or record_file_type == 2:
-                print ("### txt extracted!")
-                print ("elapsed time : " + str(t2-t1))
                 logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(intf, self._txt_logfilepath))
             if record_file_type == 0 or record_file_type == 2:
-                print ("### csv extracted!")
-                print ("elapsed time : " + str(t2-t1))
                 logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(intf, self._csv_logfilepath))
 ################################################################################
 #      Def : extract total from the cmd
@@ -945,7 +989,6 @@ class Flowrecorder:
             fieldnames.insert(0, 'timestamp')
             count_df = 0
             # do log for the users
-            t1 = time.time()
             for row in result:
                 row['timestamp'] = flow_time
                 # for aligning txt
@@ -1053,7 +1096,4 @@ class Flowrecorder:
             logger_recorder.error("parse_data_by_host() cannot be executed, {}".format(e))
             pass
         else:
-            t2=time.time()
-            print ("### by host extracted!")
-            print ("elapsed time : " + str(t2-t1))
             logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(args[0], FLOW_USER_LOG_FOLDER))
