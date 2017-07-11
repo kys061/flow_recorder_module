@@ -363,54 +363,84 @@ def archive_rotate_test(do_compress, archive_period):
 def archive_rotate(do_compress, archive_period):
     try:
         global archive_count
+        month_count = 0
         # check disk size and delete folder and files
-        if get_root_disk_size() > LIMIT_DISK_SIZE:
-            archive_mon = get_archive_month(archive_period)
-            if archive_mon['archiving_month.month'] < 10:
-                delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']),
-                               FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
-                delete_folder_name = str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])
-                if (os.path.isdir(delete_path[0]) and os.path.isdir(delete_path[1])):
+        if int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
+            while int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
+                archive_mon = get_archive_month(archive_period)
+                # not to delete today's month.
+                if archive_mon['archiving_month.month'] < 10:
+                    delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']),
+                                   FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
+                    delete_folder_name = str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])
+                    while not (os.path.isdir(delete_path[0]) or os.path.isdir(delete_path[1])):
+                        if month_count < archive_period - 1:
+                            month_count += 1
+                        if archive_mon['archiving_month.month']+month_count < 10:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']+month_count),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']+month_count)]
+                            delete_folder_name = str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']+month_count)
+                        else:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)]
+                            delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)
                     # delete files archive month ago
                     try:
                         for dirpath in delete_path:
                             filenames = GetFilenames(dirpath) # get filnames from class
-                            delete_file(dirpath, filenames)
+                            try:
+                                delete_file(dirpath, filenames)
+                            except Exception as e:
+                                logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
+                                pass
+                            else:
+                                logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
                     except Exception as e:
                         logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
                         pass
                     else:
-                        logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
+                        logger_monitor.info("Deleted action successfully!")
                 else:
-                    delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month']),
-                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])]
-                    delete_folder_name = str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])
-                    # delete files last month ago
+                    delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']),
+                                   FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
+                    delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])
+                    while not (os.path.isdir(delete_path[0]) or os.path.isdir(delete_path[1])):
+                        if month_count < archive_period - 1:
+                            month_count += 1
+                        # when Feb
+                        if archive_mon['today.month'] == 2 and archive_mon['archiving_month.month']+month_count == 13:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)]
+                            delete_folder_name = str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)
+                        # when Mar
+                        if archive_mon['today.month'] == 3 and archive_mon['archiving_month.month']+month_count == 13:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-2),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-2)]
+                            delete_folder_name = str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-2)
+                        if archive_mon['today.month'] == 3 and archive_mon['archiving_month.month']+month_count == 14:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)]
+                            delete_folder_name = str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)
+                        # wen Jan
+                        delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count),
+                                    FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)]
+                        delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)
+                    # delete files archive month ago
                     try:
                         for dirpath in delete_path:
                             filenames = GetFilenames(dirpath) # get filnames from class
-                            delete_file(dirpath, filenames)
+                            try:
+                                delete_file(dirpath, filenames)
+                            except Exception as e:
+                                logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
+                                pass
+                            else:
+                                logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
                     except Exception as e:
                         logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
                         pass
                     else:
-                        logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
-
-            else:
-                delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']),
-                               FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
-                delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])
-                # delete files archive period ago
-                try:
-                    for dirpath in delete_path:
-                        filenames = GetFilenames(dirpath) # get filnames from class
-                        delete_file(dirpath, filenames)
-                except Exception as e:
-                    logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
-                    pass
-                else:
-                    logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
-
+                        logger_monitor.info("Deleted action successfully!")
         if is_month_begin():
             archive_mon = get_archive_month(archive_period)
             if archive_mon['last_month.month'] < 10:
@@ -677,7 +707,7 @@ class Flowrecorder:
 ################################################################################
     def start_by_host(self, record_file_type):
         try:
-            _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+            _intfs = subprocess_open(get_interface_cmd)
             for _intf in _intfs[0].split('\n'):
                 if re.search(_intf, self._cmd):
                     m = re.search(_intf, self._cmd)
