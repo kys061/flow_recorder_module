@@ -34,10 +34,20 @@ import csv
 import logging
 import tarfile
 import pandas as pd
-
+###############################################################################
+# User Setting
+###############################################################################
 USERNAME = 'admin'
 PASSWORD = 'admin'
 
+# percentage of usage disk(/) of df command
+LIMIT_DISK_SIZE = 55
+# 1000 = 1Kbyte, 1000000 = 1Mbyte, 50000000 = 50Mbyte
+LOGSIZE = 50000000
+###############################################################################
+
+# check if archive is done or not.
+archive_count = 1
 # Init path and filename
 FLOW_LOG_FOLDER_PATH = r'/var/log/flows'
 FLOW_USER_LOG_FOLDER = r'/var/log/flows/users'
@@ -51,10 +61,6 @@ SCRIPT_FILENAME = r'flow_recorder.py'
 MON_LOG_FILENAME = r'flow_recorder.log'
 RECORDER_SCRIPT_FILENAME = r'flow_recorder.py'
 MONITOR_SCRIPT_FILENAME = r'flow_recorder_monitor.py'
-LOGSIZE = 50000000 # 1000 = 1Kbyte, 1000000 = 1Mbyte, 50000000 = 50Mbyte
-# check if archive is done or not.
-archive_count = 1
-LIMIT_DISK_SIZE = 55
 # recorder logger setting
 logger_recorder = logging.getLogger('saisei.flow.recorder')
 logger_recorder.setLevel(logging.INFO)
@@ -369,12 +375,12 @@ def archive_rotate_test(do_compress, archive_period):
 def archive_rotate(do_compress, archive_period):
     try:
         global archive_count
-        month_count = 0
+        month_count = 0 # values to add to archiving month until last month
         # check disk size and delete folder and files
         if int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
             while int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
                 archive_mon = get_archive_month(archive_period)
-                # not to delete today's month.
+                # when archiving month is under OCT
                 if archive_mon['archiving_month.month'] < 10:
                     delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']),
                                    FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
@@ -382,6 +388,7 @@ def archive_rotate(do_compress, archive_period):
                     while not (os.path.isdir(delete_path[0]) or os.path.isdir(delete_path[1])):
                         if month_count < archive_period - 1:
                             month_count += 1
+                        # get delete path adding month_count
                         if archive_mon['archiving_month.month']+month_count < 10:
                             delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']+month_count),
                                         FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']+month_count)]
@@ -400,12 +407,12 @@ def archive_rotate(do_compress, archive_period):
                                 logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
                                 pass
                             else:
-                                logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
+                                logger_monitor.info("ARCHIVE - files in {} is deleted successfully!".format(dirpath))
                     except Exception as e:
                         logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
                         pass
                     else:
-                        logger_monitor.info("Deleted action successfully!")
+                        logger_monitor.info("ARCHIVE - eleted action successfully!")
                 else:
                     delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']),
                                    FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
@@ -441,12 +448,13 @@ def archive_rotate(do_compress, archive_period):
                                 logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
                                 pass
                             else:
-                                logger_monitor.info("files in {} is deleted successfully!".format(dirpath))
+                                logger_monitor.info("ARCHIVE - files in {} is deleted successfully!".format(dirpath))
                     except Exception as e:
                         logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
                         pass
                     else:
-                        logger_monitor.info("Deleted action successfully!")
+                        logger_monitor.info("ARCHIVE - Deleted action successfully!")
+        # for archiving 3 month ago.
         if is_month_begin():
             archive_mon = get_archive_month(archive_period)
             if archive_mon['last_month.month'] < 10:
@@ -468,11 +476,11 @@ def archive_rotate(do_compress, archive_period):
 
             if archive_count == 1:
                 archive_logfolder(compress_path, compress_folder_name, delete_path, delete_folder_name, do_compress)
-                logger_monitor.info("Today is the first day of this month, will start archive if there is folder {} month ago...".format(str(archive_period)))
+                logger_monitor.info("ARCHIVE - Today is the first day of this month, will start archive if there is folder {} month ago...".format(str(archive_period)))
                 archive_count += 1
         else:
             archive_count = 1
-            logger_monitor.info("Today is not the first day of this month! there is no folder to archive!!!")
+            logger_monitor.info("ARCHIVE - Today is not the first day of this month! there is no folder to archive!!!")
     except Exception as e:
         logger_monitor.error("archive_rotate() cannot be excuted, {}".format(e))
 
@@ -490,6 +498,18 @@ def do_flow_recorder(script_name_path, curTime, process_name):
     else:
         logger_monitor.info("{} process is restarting! check ps -ef |grep {}".format(process_name, process_name))
 
+def start_flow_recorder():
+    try:
+        cmd = r'sudo /opt/stm/target/c.sh PUT scripts/flow_recorder.py start'
+        subprocess.Popen(cmd,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE,
+                         shell=True)
+    except Exception as e:
+        logger_monitor.error("start_flow_recorder() cannot be executed, {}".format(e))
+        pass
+    else:
+        logger_monitor.info("flow_recorder.py is starting!")
 
 # Get process count by process name.
 def get_process_count(process_name):
@@ -523,7 +543,8 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
                 err_file.close()
                 logger_monitor.info("Flow {} script is not started".format(SCRIPT_FILENAME))
                 logger_monitor.info("Flow process is not started")
-                do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
+                start_flow_recorder()
+#                do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
                 logger_monitor.info("Flow {} script is started".format(SCRIPT_FILENAME))
                 logger_monitor.info("Flow {} Process was restarted.".format(SCRIPT_FILENAME))
             else:
@@ -531,7 +552,8 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
                 if monlog_size > LOGSIZE:
                     logrotate(SCRIPT_MON_LOG_FILE, monlog_size)
                 logger_monitor.info("Flow {} process is not running, will restart it".format(SCRIPT_FILENAME))
-                do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
+                start_flow_recorder()
+#                do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
                 logger_monitor.info("Flow {} process was restarted.".format(SCRIPT_FILENAME))
         else:
             logger_monitor.info("process count is too much as expected!")
