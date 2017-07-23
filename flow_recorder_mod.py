@@ -203,14 +203,19 @@ def get_filename(filenames):
         result.append(filename)
     return result
 
-def delete_file(dirpath, filenames):
+def delete_file(dirpath, filenames, disk_size=LIMIT_DISK_SIZE):
     if iter(filenames) is iter(filenames):  # deny interator!!
         raise TypeError('Must supply a container')
-    for filename in filenames:
-        if os.path.isfile(dirpath + "/" + filename):
-            os.remove(dirpath + "/" + filename)
-    if os.path.isdir(dirpath):
-        os.rmdir(dirpath)
+    if (disk_size > LIMIT_DISK_SIZE):
+        for index, filename in enumerate(filenames):
+            if (index % 10 == 0) and (int(get_root_disk_size().split('\n')[0]) < LIMIT_DISK_SIZE):
+                return
+            if os.path.isfile(dirpath + "/" + filename):
+                os.remove(dirpath + "/" + filename)
+    else:
+        logger_monitor.info("ARCHIVE - Don't have to delete files because disk_size({}) is not higher than LIMIT_DISK_SIZE({})".format(disk_size, LIMIT_DISK_SIZE))
+#        if os.path.isdir(dirpath):
+#            os.rmdir(dirpath)
 
 def compress_file(dirpath, filenames):
     if iter(filenames) is iter(filenames):  # deny interator!!
@@ -322,7 +327,7 @@ def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_f
     try:
         for dirpath in delete_path:
             filenames = GetFilenames(dirpath) # get filnames from class
-            delete_file(dirpath, filenames)
+            delete_file(dirpath, filenames, disk_size=int(get_root_disk_size().split('\n')[0]))
     except Exception as e:
         logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
         pass
@@ -373,17 +378,17 @@ def archive_rotate_test(do_compress, archive_period):
         print ("do make_del_archive_logfolder")
 
 def archive_rotate(do_compress, archive_period):
-    try:
-        global archive_count
-        month_count = 0 # values to add to archiving month until last month
-        # check disk size and delete folder and files
-        if int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
-            while int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
+    global archive_count
+    month_count = 0 # values to add to archiving month until last month
+    # check disk size and delete folder and files
+    if int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
+        while int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
+            try:
                 archive_mon = get_archive_month(archive_period)
                 # when archiving month is under OCT
                 if archive_mon['archiving_month.month'] < 10:
                     delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']),
-                                   FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
+                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
                     delete_folder_name = str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])
                     while not (os.path.isdir(delete_path[0]) or os.path.isdir(delete_path[1])):
                         if month_count < archive_period - 1:
@@ -400,32 +405,28 @@ def archive_rotate(do_compress, archive_period):
                     # delete files archive month ago
                     try:
                         for dirpath in delete_path:
-                            filenames = GetFilenames(dirpath) # get filnames from class
-                            try:
-                                delete_file(dirpath, filenames)
-                            except Exception as e:
-                                logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
-                                pass
+                            if os.path.isdir(dirpath):
+                                filenames = GetFilenames(dirpath) # get filnames from class
+                                delete_file(dirpath, filenames, disk_size=int(get_root_disk_size().split('\n')[0]))
                             else:
-                                logger_monitor.info("ARCHIVE - files in {} is deleted successfully!".format(dirpath))
+                                logger_monitor.info("ARCHIVE - There is no folder({})".format(dirpath))
                     except Exception as e:
                         logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
                         pass
-                    else:
-                        logger_monitor.info("ARCHIVE - eleted action successfully!")
+                # when archiving month is upper than OCT, ex) 10,11,12
                 else:
                     delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']),
-                                   FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
+                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
                     delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])
                     while not (os.path.isdir(delete_path[0]) or os.path.isdir(delete_path[1])):
                         if month_count < archive_period - 1:
                             month_count += 1
-                        # when Feb
+                        # when archiving month is Feb
                         if archive_mon['today.month'] == 2 and archive_mon['archiving_month.month']+month_count == 13:
                             delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1),
                                         FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)]
                             delete_folder_name = str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)
-                        # when Mar
+                        # when archiving month is Mar
                         if archive_mon['today.month'] == 3 and archive_mon['archiving_month.month']+month_count == 13:
                             delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-2),
                                         FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-2)]
@@ -434,28 +435,28 @@ def archive_rotate(do_compress, archive_period):
                             delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1),
                                         FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)]
                             delete_folder_name = str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)
-                        # wen Jan
+                        # when archiving month is Jan
                         delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count),
                                     FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)]
                         delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)
                     # delete files archive month ago
                     try:
                         for dirpath in delete_path:
-                            filenames = GetFilenames(dirpath) # get filnames from class
-                            try:
-                                delete_file(dirpath, filenames)
-                            except Exception as e:
-                                logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
-                                pass
+                            if os.path.isdir(dirpath):
+                                filenames = GetFilenames(dirpath) # get filnames from class
+                                delete_file(dirpath, filenames, disk_size=int(get_root_disk_size().split('\n')[0]))
                             else:
-                                logger_monitor.info("ARCHIVE - files in {} is deleted successfully!".format(dirpath))
+                                logger_monitor.info("ARCHIVE - There is no folder({})".format(dirpath))
                     except Exception as e:
                         logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
                         pass
-                    else:
-                        logger_monitor.info("ARCHIVE - Deleted action successfully!")
-        # for archiving 3 month ago.
-        if is_month_begin():
+            except Exception as e:
+                logger_monitor.error("disk_size_check and delete files routine cannot be excuted, {}".format(e))
+            else:
+                logger_monitor.info("ARCHIVE_01 - disk_size_check and delete files routine success!!")
+    # for archiving 3 month ago.
+    if is_month_begin():
+        try:
             archive_mon = get_archive_month(archive_period)
             if archive_mon['last_month.month'] < 10:
                 compress_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month']),
@@ -478,11 +479,12 @@ def archive_rotate(do_compress, archive_period):
                 archive_logfolder(compress_path, compress_folder_name, delete_path, delete_folder_name, do_compress)
                 logger_monitor.info("ARCHIVE - Today is the first day of this month, will start archive if there is folder {} month ago...".format(str(archive_period)))
                 archive_count += 1
+        except Exception as e:
+            logger_monitor.error("archive_rotate() cannot be excuted, {}".format(e))
         else:
-            archive_count = 1
-            logger_monitor.info("ARCHIVE - Today is not the first day of this month! there is no folder to archive!!!")
-    except Exception as e:
-        logger_monitor.error("archive_rotate() cannot be excuted, {}".format(e))
+            logger_monitor.info("ARCHIVE_02 - Today is not the first day of this month! there is no folder to archive!!!")
+    else:
+        archive_count = 1
 
 # Execute flow_recorder.py script.
 def do_flow_recorder(script_name_path, curTime, process_name):
