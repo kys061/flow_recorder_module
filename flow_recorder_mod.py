@@ -882,62 +882,62 @@ class Flowrecorder:
                         count_values += 1
                         if count_values == rows_len + 1:
                             count_values += 1
-                # record_file_type = 0 : csv, 1 : txt, 2 : both
-                if record_file_type == 0 or record_file_type == 2:
-                    # case record total
-                    if cmd_type is 'total':
-                        if not (os.path.isfile(self._csv_logfilepath)):
-                            csv_file = open(self._csv_logfilepath, 'w')
-                            csv_file.close()
-                            with open(self._csv_logfilepath, "a") as fh:
-                                fh.write(','.join(fieldnames))
-                                fh.write('\n')
-                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                writer.writerow(row)
-                        else:
-                            with open(self._csv_logfilepath, "a") as fh:
-                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                writer.writerow(row)
-                    # CASE when source_host exist in CMD
-                    if cmd_type is 'src':
-                        src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
-                        src_host = self._cmd[src.start()+12:src.end()]
-                        outbound = intf
-                        if outbound in self.d_interface['internal']:
-                            filename_by_src_path = "{}/{}{}/{}_outbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
-                        if not (os.path.isfile(filename_by_src_path)):
-                            csv_file = open(filename_by_src_path, 'w')
-                            csv_file.close()
-                            with open(filename_by_src_path, "a") as fh:
-                                fh.write(','.join(fieldnames))
-                                fh.write('\n')
-                                fh.write('{},'.format(flow_time))
-                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                writer.writerow(row)
-                        else:
-                            with open(filename_by_src_path, "a") as fh:
-                                fh.write('{},'.format(flow_time))
-                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                writer.writerow(row)
-                    # CASE when dest_host exist in CMD
-                    if cmd_type is 'dst':
-                        dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
-                        dst_host = self._cmd[dst.start()+10:dst.end()]
-                        inbound = intf
-                        if inbound in self.d_interface['external']:
-                            filename_by_dst_path = "{}/{}{}/{}_inbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
-                        if not (os.path.isfile(filename_by_dst_path)):
-                            csv_file = open(filename_by_dst_path, 'w')
-                            csv_file.close()
-                            with open(filename_by_dst_path, "a") as fh:
-                                fh.write(','.join(fieldnames))
-                                fh.write('\n')
-                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                writer.writerow(row)
-                        else:
-                            with open(filename_by_dst_path, "a") as fh:
-                                writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
-                                writer.writerow(row)
+            # record_file_type = 0 : csv, 1 : txt, 2 : both
+            if record_file_type == 0 or record_file_type == 2:
+                # case record total
+                if cmd_type is 'total':
+                    if not (os.path.isfile(self._csv_logfilepath)):
+                        csv_file = open(self._csv_logfilepath, 'w')
+                        csv_file.close()
+                        with open(self._csv_logfilepath, "a") as fh:
+                            fh.write(','.join(fieldnames))
+                            fh.write('\n')
+                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                            writer.writerow(row)
+                    else:
+                        with open(self._csv_logfilepath, "a") as fh:
+                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                            writer.writerow(row)
+                # CASE when source_host exist in CMD
+                if cmd_type is 'src':
+                    src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
+                    src_host = self._cmd[src.start()+12:src.end()]
+                    outbound = intf
+                    if outbound in self.d_interface['internal']:
+                        filename_by_src_path = "{}/{}{}/{}_outbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
+                    if not (os.path.isfile(filename_by_src_path)):
+                        csv_file = open(filename_by_src_path, 'w')
+                        csv_file.close()
+                        with open(filename_by_src_path, "a") as fh:
+                            fh.write(','.join(fieldnames))
+                            fh.write('\n')
+                            fh.write('{},'.format(flow_time))
+                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                            writer.writerow(row)
+                    else:
+                        with open(filename_by_src_path, "a") as fh:
+                            fh.write('{},'.format(flow_time))
+                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                            writer.writerow(row)
+                # CASE when dest_host exist in CMD
+                if cmd_type is 'dst':
+                    dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
+                    dst_host = self._cmd[dst.start()+10:dst.end()]
+                    inbound = intf
+                    if inbound in self.d_interface['external']:
+                        filename_by_dst_path = "{}/{}{}/{}_inbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
+                    if not (os.path.isfile(filename_by_dst_path)):
+                        csv_file = open(filename_by_dst_path, 'w')
+                        csv_file.close()
+                        with open(filename_by_dst_path, "a") as fh:
+                            fh.write(','.join(fieldnames))
+                            fh.write('\n')
+                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                            writer.writerow(row)
+                    else:
+                        with open(filename_by_dst_path, "a") as fh:
+                            writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
+                            writer.writerow(row)
         if (cmd_type is 'total'):
             if record_file_type == 1 or record_file_type == 2:
                 return [cmd_type, intf, self._txt_logfilepath]
