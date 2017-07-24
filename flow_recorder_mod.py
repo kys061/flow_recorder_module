@@ -26,11 +26,14 @@
 '''
 
 import os
+import sys
 import subprocess
 from datetime import datetime, timedelta
 import shutil
 import re
 import csv
+from logging.handlers import RotatingFileHandler
+from logging import StreamHandler
 import logging
 import tarfile
 import pandas as pd
@@ -43,7 +46,8 @@ PASSWORD = 'admin'
 # percentage of usage disk(/) of df command
 LIMIT_DISK_SIZE = 55
 # 1000 = 1Kbyte, 1000000 = 1Mbyte, 50000000 = 50Mbyte
-LOGSIZE = 50000000
+LOGSIZE = 52428868
+#LOGSIZE = 50000000
 ###############################################################################
 
 # check if archive is done or not.
@@ -51,9 +55,13 @@ archive_count = 1
 # Init path and filename
 FLOW_LOG_FOLDER_PATH = r'/var/log/flows'
 FLOW_USER_LOG_FOLDER = r'/var/log/flows/users'
-SCRIPT_MON_LOG_FILE = r'/var/log/flow_recorder.log'
+RECORDER_LOG_FILENAME = r'/var/log/flow_recorder.log'
+MONITOR_LOG_FILENAME = r'/var/log/flow_recorder_monitor.log'
 SCRIPT_MON_LOG_FOLDER = r'/var/log/'
 STM_SCRIPT_PATH = r'/opt/stm/target/pcli/stm_cli.py'
+
+logger_recorder = None
+logger_monitor = None
 
 # for monitor script
 SCRIPT_PATH = r'/etc/stmfiles/files/scripts/'
@@ -61,28 +69,6 @@ SCRIPT_FILENAME = r'flow_recorder.py'
 MON_LOG_FILENAME = r'flow_recorder.log'
 RECORDER_SCRIPT_FILENAME = r'flow_recorder.py'
 MONITOR_SCRIPT_FILENAME = r'flow_recorder_monitor.py'
-# recorder logger setting
-logger_recorder = logging.getLogger('saisei.flow.recorder')
-logger_recorder.setLevel(logging.INFO)
-logger_monitor = logging.getLogger('saisei.flow.recorder.monitor')
-logger_monitor.setLevel(logging.INFO)
-logger_common = logging.getLogger('saisei.flow.recorder.common')
-logger_common.setLevel(logging.INFO)
-
-handler = logging.FileHandler(SCRIPT_MON_LOG_FILE)
-handler.setLevel(logging.INFO)
-filter = logging.Filter('saisei.flow')
-formatter = logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-handler.addFilter(filter)
-
-logger_recorder.addHandler(handler)
-logger_recorder.addFilter(filter)
-logger_monitor.addHandler(handler)
-logger_monitor.addFilter(filter)
-logger_common.addHandler(handler)
-logger_common.addFilter(filter)
 
 # pattern for re
 pattern_for_top = 'top [0-9]+'
@@ -106,13 +92,43 @@ get_interface_cmd = 'echo \'show interfaces\' | sudo /opt/stm/target/pcli/stm_cl
 ################################################################################
 #                       Common Module
 ################################################################################
+def make_logger():
+    global logger_recorder
+    logger_recorder = logging.getLogger('saisei.flow.recorder')
+    #  ==== MUST be True for hg commit ====
+    if True:
+        fh = RotatingFileHandler(RECORDER_LOG_FILENAME, 'a', 50 * 1024 * 1024, 4)
+        logger_recorder.setLevel(logging.INFO)
+    else:
+        fh = StreamHandler(sys.stdout)
+        logger_recorder.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    fh.setFormatter(formatter)
+    logger_recorder.addHandler(fh)
+    logger_recorder.info("***** logger_recorder starting %s *****" % (sys.argv[0]))
+
+def make_monitor_logger():
+    global logger_monitor
+    logger_monitor = logging.getLogger('saisei.flow.recorder.monitor')
+    #  ==== MUST be True for hg commit ====
+    if True:
+        fh2 = RotatingFileHandler(MONITOR_LOG_FILENAME, 'a', 50 * 1024 * 1024, 4)
+        logger_monitor.setLevel(logging.INFO)
+    else:
+        fh2 = StreamHandler(sys.stdout)
+        logger_monitor.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    fh2.setFormatter(formatter)
+    logger_monitor.addHandler(fh2)
+    logger_monitor.info("***** logger_monitor starting %s *****" % (sys.argv[0]))
+
 # Excute command in shell
 def subprocess_open(command):
     try:
         popen = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         (stdoutdata, stderrdata) = popen.communicate()
     except Exception as e:
-        logger_common.error("subprocess_open() cannot be executed, {}".format(e))
+        logger_monitor.error("subprocess_open() cannot be executed, {}".format(e))
         pass
     return stdoutdata, stderrdata
 
@@ -124,7 +140,7 @@ def parsedate(today_date):
         month = parseDate[1]
         day = parseDate[2]
     except Exception as e:
-        logger_common.error("parsedate() cannot be executed, {}".format(e))
+        logger_monitor.error("parsedate() cannot be executed, {}".format(e))
         pass
     return [year, month, day]
 
@@ -134,7 +150,7 @@ def get_nowdate():
         nowdate = datetime.today().strftime("%Y:%m:%d")
         nowdatetime = datetime.today().strftime("%Y/%m/%d %H:%M:%S")
     except Exception as e:
-        logger_common.error("get_nowdate() cannot be executed, {}".format(e))
+        logger_monitor.error("get_nowdate() cannot be executed, {}".format(e))
         pass
     return [nowdate, nowdatetime]
 ################################################################################
@@ -159,24 +175,20 @@ class GetRow(object):
 ################################################################################
 def init_logger():
     # recorder logger setting
-    global logger_recorder, logger_monitor, logger_common
+    global logger_recorder, logger_monitor
     global handler, filter, formatter
 
     for hdlr in logger_recorder.handlers[:]: # remove all old handlers
         logger_recorder.removeHandler(hdlr)
     for hdlr in logger_monitor.handlers[:]: # remove all old handlers
         logger_monitor.removeHandler(hdlr)
-    for hdlr in logger_common.handlers[:]: # remove all old handlers
-        logger_common.removeHandler(hdlr)
 
     logger_recorder = logging.getLogger('saisei.flow.recorder')
     logger_recorder.setLevel(logging.INFO)
     logger_monitor = logging.getLogger('saisei.flow.recorder.monitor')
     logger_monitor.setLevel(logging.INFO)
-    logger_common = logging.getLogger('saisei.flow.recorder.common')
-    logger_common.setLevel(logging.INFO)
 
-    handler = logging.FileHandler(SCRIPT_MON_LOG_FILE)
+    handler = logging.FileHandler(RECORDER_LOG_FILENAME)
     handler.setLevel(logging.INFO)
     filter = logging.Filter('saisei.flow')
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -187,12 +199,14 @@ def init_logger():
     logger_recorder.addFilter(filter)
     logger_monitor.addHandler(handler)
     logger_monitor.addFilter(filter)
-    logger_common.addHandler(handler)
-    logger_common.addFilter(filter)
 
 def get_root_disk_size():
-    cmd = r"df -h |grep '/$' |egrep '[0-9]+%' -o |cut -d '%' -f1"
-    size = subprocess_open(cmd)
+    try:
+        cmd = r"df -h |grep '/$' |egrep '[0-9]+%' -o |cut -d '%' -f1"
+        size = subprocess_open(cmd)
+    except Exception as e:
+        logger_monitor.error("get_root_disk_size() cannot be executed, {}".format(e))
+        pass
     return size[0]
 
 def get_filename(filenames):
@@ -274,7 +288,7 @@ def logrotate(logfilepath, logsize):
             err_file = open(logfilepath, 'w')
             err_file.close()
             logger_monitor.info("File is generated again because of size({})".format(str(logsize)))
-            init_logger()
+#            init_logger()
     except Exception as e:
         logger_monitor.error("logrotate() cannot be executed, {}".format(e))
         pass
@@ -527,21 +541,22 @@ def get_process_count(process_name):
 def compare_process_count(curTime, process_name, recorder_process_count, monitor_process_count):
     try:
         if recorder_process_count == "1\n" or recorder_process_count == "2\n":
-            if not os.path.isfile(SCRIPT_MON_LOG_FILE):
-                err_file = open(SCRIPT_MON_LOG_FILE, 'w')
+            if not os.path.isfile(RECORDER_LOG_FILENAME):
+                err_file = open(RECORDER_LOG_FILENAME, 'w')
                 err_file.close()
                 logger_monitor.info("Flow {} script is started".format(SCRIPT_FILENAME))
             else:
                 logger_monitor.info("{} Process is running.".format(process_name))
-                monlog_size = get_logsize()
-                if monlog_size > LOGSIZE:
-                    logrotate(SCRIPT_MON_LOG_FILE, monlog_size)
-                    init_logger()
-                else:
-                    logger_monitor.info("flow_recorder log size {} is small than default LOGSIZE {}".format(monlog_size, LOGSIZE))
+#                monlog_size = get_logsize()
+#                if monlog_size > LOGSIZE:
+#                    logrotate(RECORDER_LOG_FILENAME, monlog_size)
+#                    init_logger()
+#                    make_monitor_logger()
+#                else:
+#                    logger_monitor.info("flow_recorder log size {} is small than default LOGSIZE {}".format(monlog_size, LOGSIZE))
         elif recorder_process_count == "0\n":
-            if not os.path.isfile(SCRIPT_MON_LOG_FILE):
-                err_file = open(SCRIPT_MON_LOG_FILE, 'w')
+            if not os.path.isfile(RECORDER_LOG_FILENAME):
+                err_file = open(RECORDER_LOG_FILENAME, 'w')
                 err_file.close()
                 logger_monitor.info("Flow {} script is not started".format(SCRIPT_FILENAME))
                 logger_monitor.info("Flow process is not started")
@@ -550,9 +565,10 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
                 logger_monitor.info("Flow {} script is started".format(SCRIPT_FILENAME))
                 logger_monitor.info("Flow {} Process was restarted.".format(SCRIPT_FILENAME))
             else:
-                monlog_size = get_logsize()
-                if monlog_size > LOGSIZE:
-                    logrotate(SCRIPT_MON_LOG_FILE, monlog_size)
+#                monlog_size = get_logsize()
+#                if monlog_size > LOGSIZE:
+#                    logrotate(RECORDER_LOG_FILENAME, monlog_size)
+#                    make_monitor_logger()
                 logger_monitor.info("Flow {} process is not running, will restart it".format(SCRIPT_FILENAME))
                 start_flow_recorder()
 #                do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
@@ -1156,3 +1172,12 @@ class Flowrecorder:
             pass
         else:
             logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(args[0], FLOW_USER_LOG_FOLDER))
+
+
+# main start
+if re.search('flow_recorder.py', sys.argv[0]):
+    make_logger()
+    make_monitor_logger()
+
+if re.search('flow_recorder_monitor.py', sys.argv[0]):
+    make_monitor_logger()
