@@ -122,37 +122,7 @@ def make_monitor_logger():
     logger_monitor.addHandler(fh2)
     logger_monitor.info("***** logger_monitor starting %s *****" % (sys.argv[0]))
 
-# Excute command in shell
-def subprocess_open(command):
-    try:
-        popen = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        (stdoutdata, stderrdata) = popen.communicate()
-    except Exception as e:
-        logger_monitor.error("subprocess_open() cannot be executed, {}".format(e))
-        pass
-    return stdoutdata, stderrdata
 
-# Parse the current date
-def parsedate(today_date):
-    try:
-        parseDate = today_date.split(':')
-        year = parseDate[0]
-        month = parseDate[1]
-        day = parseDate[2]
-    except Exception as e:
-        logger_monitor.error("parsedate() cannot be executed, {}".format(e))
-        pass
-    return [year, month, day]
-
-# Get current date as LIST(y:m:d, y/m/d h:m:s).
-def get_nowdate():
-    try:
-        nowdate = datetime.today().strftime("%Y:%m:%d")
-        nowdatetime = datetime.today().strftime("%Y/%m/%d %H:%M:%S")
-    except Exception as e:
-        logger_monitor.error("get_nowdate() cannot be executed, {}".format(e))
-        pass
-    return [nowdate, nowdatetime]
 ################################################################################
 #                      Flow.Monitor  Class with generator
 ################################################################################
@@ -173,6 +143,16 @@ class GetRow(object):
 ################################################################################
 #                      Flow.Monitor  Module
 ################################################################################
+# Get current date as LIST(y:m:d, y/m/d h:m:s).
+def get_nowdate():
+    try:
+        nowdate = datetime.today().strftime("%Y:%m:%d")
+        nowdatetime = datetime.today().strftime("%Y/%m/%d %H:%M:%S")
+    except Exception as e:
+        logger_monitor.error("get_nowdate() cannot be executed, {}".format(e))
+        pass
+    return [nowdate, nowdatetime]
+
 def init_logger():
     # recorder logger setting
     global logger_recorder, logger_monitor
@@ -582,6 +562,28 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
 ################################################################################
 #                      Flow.Recorder  Module
 ################################################################################
+# Excute command in shell
+def subprocess_open(command):
+    try:
+        popen = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        (stdoutdata, stderrdata) = popen.communicate()
+    except Exception as e:
+        logger_recorder.error("subprocess_open() cannot be executed, {}".format(e))
+        pass
+    return stdoutdata, stderrdata
+
+# Parse the current date
+def parsedate(today_date):
+    try:
+        parseDate = today_date.split(':')
+        year = parseDate[0]
+        month = parseDate[1]
+        day = parseDate[2]
+    except Exception as e:
+        logger_recorder.error("parsedate() cannot be executed, {}".format(e))
+        pass
+    return [year, month, day]
+
 # Get filepath and command string
 def get_filepaths(foldername, INTERFACE_LIST, TOP_NUM, i):
     try:
@@ -1177,7 +1179,6 @@ class Flowrecorder:
 # main start
 if re.search('flow_recorder.py', sys.argv[0]):
     make_logger()
-    make_monitor_logger()
 
 if re.search('flow_recorder_monitor.py', sys.argv[0]):
     make_monitor_logger()
