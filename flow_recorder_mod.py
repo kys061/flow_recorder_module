@@ -1005,7 +1005,8 @@ class Flowrecorder:
             reader = csv.DictReader(raw_data.splitlines(),
                                     delimiter=' ',
                                     skipinitialspace=True,
-                                    fieldnames=fieldnames)
+                                    fieldnames=fieldnames,
+                                    quoting=csv.QUOTE_NONE)
 
             result = sorted(reader, key=lambda d: d['srchost'])
             rows_len = len(result)
@@ -1055,7 +1056,8 @@ class Flowrecorder:
             reader = csv.DictReader(raw_data.splitlines(),
                                     delimiter=' ',
                                     skipinitialspace=True,
-                                    fieldnames=fieldnames)
+                                    fieldnames=fieldnames,
+                                    quoting=csv.QUOTE_NONE)
 
             result = sorted(reader, key=lambda d: d['srchost'])
             # get length of rows
