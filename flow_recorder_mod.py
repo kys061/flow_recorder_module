@@ -1,36 +1,53 @@
+
+#####################################
+# Copyright (c) 2017 Saise          #
+# Last Date : 2017.07.21            #
+# Writer : yskang(kys061@gmail.com) #
+#####################################
 '''
     flow_recorder_module
     ~~~~~~~~~~~~~~~~~~~
 
-    flow_recorder_module is a support tool. It provide a below module.
+    flow_recorder_module is a support tool.
+    It provides a below module.
 
     1. common module
     ----------------
-        :Module to use for monitor and recorder
+        :For monitor and recorder
 
     2. monitor module
     -----------------
-        :Module to use for monitor only
+        :For monitor only
 
     3. recorder module
-        :Module to use for recorder only
+    ------------------
+        :For recorder only
 
-    :copyright: (c) 2016 by yskang.
 '''
 
 import os
 import subprocess
 from datetime import datetime, timedelta
 import shutil
-import time
 import re
 import csv
-import itertools
 import logging
 import tarfile
 import pandas as pd
-from tabulate import tabulate
+###############################################################################
+# User Setting
+###############################################################################
+USERNAME = 'admin'
+PASSWORD = 'admin'
 
+# percentage of usage disk(/) of df command
+LIMIT_DISK_SIZE = 55
+# 1000 = 1Kbyte, 1000000 = 1Mbyte, 50000000 = 50Mbyte
+LOGSIZE = 50000000
+###############################################################################
+
+# check if archive is done or not.
+archive_count = 1
 # Init path and filename
 FLOW_LOG_FOLDER_PATH = r'/var/log/flows'
 FLOW_USER_LOG_FOLDER = r'/var/log/flows/users'
@@ -44,10 +61,6 @@ SCRIPT_FILENAME = r'flow_recorder.py'
 MON_LOG_FILENAME = r'flow_recorder.log'
 RECORDER_SCRIPT_FILENAME = r'flow_recorder.py'
 MONITOR_SCRIPT_FILENAME = r'flow_recorder_monitor.py'
-LOGSIZE = 50000000 # 1000 = 1Kbyte, 1000000 = 1Mbyte, 50000000 = 50Mbyte
-# check if archive is done or not.
-archive_count = 1
-
 # recorder logger setting
 logger_recorder = logging.getLogger('saisei.flow.recorder')
 logger_recorder.setLevel(logging.INFO)
@@ -86,6 +99,10 @@ pattern_07 = r'Flows at '
 #
 is_extracted = False
 #
+err_lists = ['Cannot connect to server', 'does not exist', 'no matching objects',
+             'waiting for server', 'cannot connect to server']
+#
+get_interface_cmd = 'echo \'show interfaces\' | sudo /opt/stm/target/pcli/stm_cli.py '+USERNAME+':'+PASSWORD+'@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\''
 ################################################################################
 #                       Common Module
 ################################################################################
@@ -173,6 +190,11 @@ def init_logger():
     logger_common.addHandler(handler)
     logger_common.addFilter(filter)
 
+def get_root_disk_size():
+    cmd = r"df -h |grep '/$' |egrep '[0-9]+%' -o |cut -d '%' -f1"
+    size = subprocess_open(cmd)
+    return size[0]
+
 def get_filename(filenames):
     if iter(filenames) is iter(filenames):  # deny interator!!
         raise TypeError('Must supply a container')
@@ -181,14 +203,19 @@ def get_filename(filenames):
         result.append(filename)
     return result
 
-def delete_file(dirpath, filenames):
+def delete_file(dirpath, filenames, disk_size=LIMIT_DISK_SIZE):
     if iter(filenames) is iter(filenames):  # deny interator!!
         raise TypeError('Must supply a container')
-    for filename in filenames:
-        if os.path.isfile(dirpath + "/" + filename):
-            os.remove(dirpath + "/" + filename)
-    if os.path.isdir(dirpath):
-        os.rmdir(dirpath)
+    if (disk_size > LIMIT_DISK_SIZE):
+        for index, filename in enumerate(filenames):
+            if (index % 10 == 0) and (int(get_root_disk_size().split('\n')[0]) < LIMIT_DISK_SIZE):
+                return
+            if os.path.isfile(dirpath + "/" + filename):
+                os.remove(dirpath + "/" + filename)
+    else:
+        logger_monitor.info("ARCHIVE - Don't have to delete files because disk_size({}) is not higher than LIMIT_DISK_SIZE({})".format(disk_size, LIMIT_DISK_SIZE))
+#        if os.path.isdir(dirpath):
+#            os.rmdir(dirpath)
 
 def compress_file(dirpath, filenames):
     if iter(filenames) is iter(filenames):  # deny interator!!
@@ -300,7 +327,7 @@ def archive_logfolder(compress_path, compress_folder_name, delete_path, delete_f
     try:
         for dirpath in delete_path:
             filenames = GetFilenames(dirpath) # get filnames from class
-            delete_file(dirpath, filenames)
+            delete_file(dirpath, filenames, disk_size=int(get_root_disk_size().split('\n')[0]))
     except Exception as e:
         logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
         pass
@@ -351,36 +378,113 @@ def archive_rotate_test(do_compress, archive_period):
         print ("do make_del_archive_logfolder")
 
 def archive_rotate(do_compress, archive_period):
-    try:
-        global archive_count
-        if is_month_begin():
+    global archive_count
+    month_count = 0 # values to add to archiving month until last month
+    # check disk size and delete folder and files
+    if int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
+        while int(get_root_disk_size().split('\n')[0]) > LIMIT_DISK_SIZE:
+            try:
+                archive_mon = get_archive_month(archive_period)
+                # when archiving month is under OCT
+                if archive_mon['archiving_month.month'] < 10:
+                    delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']),
+                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
+                    delete_folder_name = str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])
+                    while not (os.path.isdir(delete_path[0]) or os.path.isdir(delete_path[1])):
+                        if month_count < archive_period - 1:
+                            month_count += 1
+                        # get delete path adding month_count
+                        if archive_mon['archiving_month.month']+month_count < 10:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']+month_count),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']+month_count)]
+                            delete_folder_name = str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']+month_count)
+                        else:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)]
+                            delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)
+                    # delete files archive month ago
+                    try:
+                        for dirpath in delete_path:
+                            if os.path.isdir(dirpath):
+                                filenames = GetFilenames(dirpath) # get filnames from class
+                                delete_file(dirpath, filenames, disk_size=int(get_root_disk_size().split('\n')[0]))
+                            else:
+                                logger_monitor.info("ARCHIVE - There is no folder({})".format(dirpath))
+                    except Exception as e:
+                        logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
+                        pass
+                # when archiving month is upper than OCT, ex) 10,11,12
+                else:
+                    delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']),
+                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
+                    delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])
+                    while not (os.path.isdir(delete_path[0]) or os.path.isdir(delete_path[1])):
+                        if month_count < archive_period - 1:
+                            month_count += 1
+                        # when archiving month is Feb
+                        if archive_mon['today.month'] == 2 and archive_mon['archiving_month.month']+month_count == 13:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)]
+                            delete_folder_name = str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)
+                        # when archiving month is Mar
+                        if archive_mon['today.month'] == 3 and archive_mon['archiving_month.month']+month_count == 13:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-2),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-2)]
+                            delete_folder_name = str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-2)
+                        if archive_mon['today.month'] == 3 and archive_mon['archiving_month.month']+month_count == 14:
+                            delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1),
+                                        FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)]
+                            delete_folder_name = str(archive_mon['today.year']) + '0' + str(archive_mon['today.month']-1)
+                        # when archiving month is Jan
+                        delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count),
+                                    FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)]
+                        delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']+month_count)
+                    # delete files archive month ago
+                    try:
+                        for dirpath in delete_path:
+                            if os.path.isdir(dirpath):
+                                filenames = GetFilenames(dirpath) # get filnames from class
+                                delete_file(dirpath, filenames, disk_size=int(get_root_disk_size().split('\n')[0]))
+                            else:
+                                logger_monitor.info("ARCHIVE - There is no folder({})".format(dirpath))
+                    except Exception as e:
+                        logger_monitor.error("delete files in {} cannot be executed, {}".format(dirpath, e))
+                        pass
+            except Exception as e:
+                logger_monitor.error("disk_size_check and delete files routine cannot be excuted, {}".format(e))
+            else:
+                logger_monitor.info("ARCHIVE_01 - disk_size_check and delete files routine success!!")
+    # for archiving 3 month ago.
+    if is_month_begin():
+        try:
             archive_mon = get_archive_month(archive_period)
             if archive_mon['last_month.month'] < 10:
                 compress_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month']),
-                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])]
+                                 FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])]
                 compress_folder_name = str(archive_mon['last_month.year']) + '0' + str(archive_mon['last_month.month'])
             else:
                 compress_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['last_month.year']) + str(archive_mon['last_month.month']),
-                                FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + str(archive_mon['last_month.month'])]
+                                 FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['last_month.year']) + str(archive_mon['last_month.month'])]
                 compress_folder_name = str(archive_mon['last_month.year']) + str(archive_mon['last_month.month'])
             if archive_mon['archiving_month.month'] < 10:
                 delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month']),
-                            FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
+                               FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])]
                 delete_folder_name = str(archive_mon['archiving_month.year']) + '0' + str(archive_mon['archiving_month.month'])
             else:
                 delete_path = [FLOW_USER_LOG_FOLDER + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month']),
-                            FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
+                               FLOW_LOG_FOLDER_PATH + '/' + str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])]
                 delete_folder_name = str(archive_mon['archiving_month.year']) + str(archive_mon['archiving_month.month'])
 
             if archive_count == 1:
                 archive_logfolder(compress_path, compress_folder_name, delete_path, delete_folder_name, do_compress)
-                logger_monitor.info("Today is the first day of this month, will start archive if there is folder {} month ago...".format(str(archive_period)))
+                logger_monitor.info("ARCHIVE - Today is the first day of this month, will start archive if there is folder {} month ago...".format(str(archive_period)))
                 archive_count += 1
+        except Exception as e:
+            logger_monitor.error("archive_rotate() cannot be excuted, {}".format(e))
         else:
-            archive_count = 1
-            logger_monitor.info("Today is not the first day of this month! there is no folder to archive!!!")
-    except Exception as e:
-        logger_monitor.error("archive_rotate() cannot be excuted, {}".format(e))
+            logger_monitor.info("ARCHIVE_02 - Today is not the first day of this month! there is no folder to archive!!!")
+    else:
+        archive_count = 1
 
 # Execute flow_recorder.py script.
 def do_flow_recorder(script_name_path, curTime, process_name):
@@ -396,6 +500,18 @@ def do_flow_recorder(script_name_path, curTime, process_name):
     else:
         logger_monitor.info("{} process is restarting! check ps -ef |grep {}".format(process_name, process_name))
 
+def start_flow_recorder():
+    try:
+        cmd = r'sudo /opt/stm/target/c.sh PUT scripts/flow_recorder.py start'
+        subprocess.Popen(cmd,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE,
+                         shell=True)
+    except Exception as e:
+        logger_monitor.error("start_flow_recorder() cannot be executed, {}".format(e))
+        pass
+    else:
+        logger_monitor.info("flow_recorder.py is starting!")
 
 # Get process count by process name.
 def get_process_count(process_name):
@@ -429,7 +545,8 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
                 err_file.close()
                 logger_monitor.info("Flow {} script is not started".format(SCRIPT_FILENAME))
                 logger_monitor.info("Flow process is not started")
-                do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
+                start_flow_recorder()
+#                do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
                 logger_monitor.info("Flow {} script is started".format(SCRIPT_FILENAME))
                 logger_monitor.info("Flow {} Process was restarted.".format(SCRIPT_FILENAME))
             else:
@@ -437,7 +554,8 @@ def compare_process_count(curTime, process_name, recorder_process_count, monitor
                 if monlog_size > LOGSIZE:
                     logrotate(SCRIPT_MON_LOG_FILE, monlog_size)
                 logger_monitor.info("Flow {} process is not running, will restart it".format(SCRIPT_FILENAME))
-                do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
+                start_flow_recorder()
+#                do_flow_recorder(SCRIPT_PATH+SCRIPT_FILENAME, curTime[1], process_name)
                 logger_monitor.info("Flow {} process was restarted.".format(SCRIPT_FILENAME))
         else:
             logger_monitor.info("process count is too much as expected!")
@@ -548,31 +666,45 @@ class Flowrecorder:
         print(self._logfolderpath)
         print(self._include_subnet_tree)
 
+    def check_error(self, raw_data):
+        if raw_data != '':
+            for err in err_lists:
+                if err in raw_data:
+                    err_marked = True
+                    err_contents = re.sub(r"\n", "", err)
+                    logger_recorder.error('failed from rest cli, msg : {}, CMD : [ {} ]'.format(err_contents, self._cmd))
+                    return True
+                else:
+                    err_marked = False
+            if not err_marked:
+                return False
+        else:
+            try:
+                raise Exception('NullDataError - raw_data is Null')
+            except Exception as e:
+                logger_recorder.error('{}'.format(e))
+                pass
+
 ################################################################################
 #       Def : start recording for record_cmd_type
 #       0:all, 1:all and users in subnetree, 2:by host, 3:0,1,2
 ################################################################################
     def start(self, record_file_type, record_cmd_type):
         try:
-            _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
-            for _intf in _intfs[0].split('\n'):
+            _intfs = subprocess_open(get_interface_cmd)
+            _intfs = [__intf for __intf in _intfs[0].split('\n') if __intf]
+            for _intf in _intfs:
                 if re.search(_intf, self._cmd):
                     m = re.search(_intf, self._cmd)
-
             intf = self._cmd[m.start():m.end()]
+
+            raw_data = subprocess_open(self._cmd)
+            err_status = self.check_error(raw_data[0])
+
             if not (os.path.isdir(self._usersfolder)):
                 create_folder(self._foldername)
-                t1=time.time()
-                raw_data = subprocess_open(self._cmd)
-                t2 = time.time()
-                print ("elapsed time from REST API : " + str(t2-t1))
-                if 'Cannot connect to server' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                elif 'does not exist' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                elif 'no matching objects' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                else:
+                if not err_status:
+                    logger_recorder.info('success from rest cli, CMD : [ {} ]'.format(self._cmd))
                     if record_cmd_type == 0:
                         self.record_total(raw_data[0], record_file_type, intf)
                     if record_cmd_type == 1:
@@ -584,17 +716,8 @@ class Flowrecorder:
                         self.record_total(raw_data[0], record_file_type, intf)
                         self.parse_data_by_host(raw_data[0], record_file_type, intf)
             else:
-                t1=time.time()
-                raw_data = subprocess_open(self._cmd)
-                t2 = time.time()
-                print ("elapsed time from REST API : " + str(t2-t1))
-                if 'Cannot connect to server' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                elif 'does not exist' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                elif 'no matching objects' in raw_data[0]:
-                    logger_recorder.error('{} - {}'.format(raw_data[0], self._cmd))
-                else:
+                if not err_status:
+                    logger_recorder.info('success from rest cli, CMD : [ {} ]'.format(self._cmd))
                     if record_cmd_type == 0:
                         self.record_total(raw_data[0], record_file_type, intf)
                     if record_cmd_type == 1:
@@ -606,14 +729,15 @@ class Flowrecorder:
                         self.record_total(raw_data[0], record_file_type, intf)
                         self.parse_data_by_host(raw_data[0], record_file_type, intf)
         except Exception as e:
-            logger_recorder.error("start_by_subnetree() cannot be executed, {}".format(e))
+            logger_recorder.error("start() cannot be executed, {}".format(e))
             pass
 ################################################################################
 #       Def :  Extract data by HOST # CMD TYPE 3
+#              This function is depricated.
 ################################################################################
     def start_by_host(self, record_file_type):
         try:
-            _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
+            _intfs = subprocess_open(get_interface_cmd)
             for _intf in _intfs[0].split('\n'):
                 if re.search(_intf, self._cmd):
                     m = re.search(_intf, self._cmd)
@@ -645,120 +769,123 @@ class Flowrecorder:
             pass
 ################################################################################
 #      Def : Write row with generator
+#           rows - row from GetRow class's Generator container
+#           reader - reader obj from record total()
+#           record_file_type - file type trying to write txt or csv
+#           fieldnames - fieldnames
+#           flow_time - The time extracted from REST API
+#           rows_len - Length of rows extracted
+#           *args - added for preparing increased parameter,
+#           now args is intface's name(intf)
+#   return type :
+#        cmd_type
+#        intf
+#        path_of_filename
 ################################################################################
-    def write_row(self, rows, reader, record_file_type, fieldnames, flow_time, rows_len, *args):
-        try:
-            t1=time.time()
-            count_values = 1
-            labels = []
-            labels = fieldnames
-            for row in rows:
-                row['timestamp'] = flow_time
-                values = []
-                for label in fieldnames:
-                    values.append(row[label])
-                middles = []
-                for label in labels:
-                    middles.append('='*len(label))
+    def write_row(self, rows, reader, record_file_type, fieldnames, flow_time, rows_len, intf):
+        count_values = 1
+        labels = []
+        labels = fieldnames
+        if not re.search('source_host|dest_host', self._cmd):
+            cmd_type = r'total'
+        if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
+            cmd_type = r'src'
+        if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
+            cmd_type = r'dst'
+        for row in rows:
+            row['timestamp'] = flow_time
+            values = []
+            for label in fieldnames:
+                values.append(row[label])
+            middles = []
+            for label in labels:
+                middles.append('='*len(label))
 
-                labelLine = list()
-                middleLine = list()
-                valueLine = list()
+            labelLine = list()
+            middleLine = list()
+            valueLine = list()
 
-                for label, middle, value in zip(labels, middles, values):
-                    padding = max(len(str(label)), len(str(value)))
-                    labelLine.append('{0:<{1}}'.format(label, padding))  # generate a string with the variable whitespace padding
-                    middleLine.append('{0:<{1}}'.format(middle, padding))
-                    valueLine.append('{0:<{1}}'.format(value, padding))
+            for label, middle, value in zip(labels, middles, values):
+                padding = max(len(str(label)), len(str(value)))
+                labelLine.append('{0:<{1}}'.format(label, padding))  # generate a string with the variable whitespace padding
+                middleLine.append('{0:<{1}}'.format(middle, padding))
+                valueLine.append('{0:<{1}}'.format(value, padding))
 
-                # Add datetime
-
-                # record_file_type = 0 : csv, 1 : txt, 2 : both
-                if record_file_type == 1 or record_file_type == 2:
-                    # cmd type is for total.
-                    if not re.search('source_host|dest_host', self._cmd):
-                        if os.path.isfile(self._txt_logfilepath):
+            # record_file_type = 0 : csv, 1 : txt, 2 : both
+            if record_file_type == 1 or record_file_type == 2:
+                # cmd type is for total.
+                if cmd_type is 'total':
+                    if os.path.isfile(self._txt_logfilepath):
+                        with open(self._txt_logfilepath, 'a') as fh:
+                            fh.write('      '.join(valueLine) + '\r\n')
+                        count_values += 1
+                        if count_values == rows_len + 1:
+                            count_values += 1
+                    else:
+                        test_file = open(self._txt_logfilepath, 'w')
+                        test_file.close()
+                        if count_values >= 1 or count_values < rows_len + 1:
                             with open(self._txt_logfilepath, 'a') as fh:
-                                fh.write('      '.join(valueLine) + '\r\n')
+                                fh.write('      '.join(labelLine) + '\r\n')
+                        with open(self._txt_logfilepath, 'a') as fh:
+                            fh.write('      '.join(valueLine) + '\r\n')
+                        count_values += 1
+                        if count_values == rows_len + 1:
                             count_values += 1
-                            if count_values == rows_len + 1:
-                                count_values += 1
-                        else:
-                            test_file = open(self._txt_logfilepath, 'w')
-                            test_file.close()
-                            if count_values >= 1 or count_values < rows_len + 1:
-                                with open(self._txt_logfilepath, 'a') as fh:
-                                    fh.write('      '.join(labelLine) + '\r\n')
-                            with open(self._txt_logfilepath, 'a') as fh:
-                                fh.write('      '.join(valueLine) + '\r\n')
+                # CASE when source_host exist in CMD
+                if cmd_type is 'src':
+                    src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
+                    src_host = self._cmd[src.start()+12:src.end()]
+                    outbound = intf
+                    if outbound in self.d_interface['internal']:
+                        filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
+
+                    if os.path.isfile(filename_by_src_path):
+                        with open(filename_by_src_path, 'a') as fh:
+                            fh.write('      '.join(valueLine) + '\r\n')
+                        count_values += 1
+                        if count_values == rows_len + 1:
                             count_values += 1
-                            if count_values == rows_len + 1:
-                                count_values += 1
-
-                    # CASE when source_host exist in CMD
-                    if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
-                        src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
-                        src_host = self._cmd[src.start()+12:src.end()]
-                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
-                        for _intf in _intfs[0].split('\n'):
-                            if re.search(_intf, self._cmd):
-                                inf = re.search(_intf, self._cmd)
-                        outbound = self._cmd[inf.start():inf.end()]
-                        if outbound == self.d_interface['internal'][0]:
-                            filename_by_src_path = "{}/{}{}/{}_outbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
-
-                        if os.path.isfile(filename_by_src_path):
+                    else:
+                        test_file = open(filename_by_src_path, 'w')
+                        test_file.close()
+                        if count_values >= 1 or count_values < rows_len + 1:
                             with open(filename_by_src_path, 'a') as fh:
-                                fh.write('      '.join(valueLine) + '\r\n')
+                                fh.write('      '.join(labelLine) + '\r\n')
+                        with open(filename_by_src_path, 'a') as fh:
+                            fh.write('      '.join(valueLine) + '\r\n')
+                        count_values += 1
+                        if count_values == rows_len + 1:
                             count_values += 1
-                            if count_values == rows_len + 1:
-                                count_values += 1
-                        else:
-                            test_file = open(filename_by_src_path, 'w')
-                            test_file.close()
-                            if count_values >= 1 or count_values < rows_len + 1:
-                                with open(filename_by_src_path, 'a') as fh:
-                                    fh.write('      '.join(labelLine) + '\r\n')
-                            with open(filename_by_src_path, 'a') as fh:
-                                fh.write('      '.join(valueLine) + '\r\n')
+                # CASE when dest_host exist in CMD
+                if cmd_type is 'dst':
+                    dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
+                    dst_host = self._cmd[dst.start()+10:dst.end()]
+                    inbound = intf
+                    if inbound in self.d_interface['external']:
+                        filename_by_dst_path = "{}/{}{}/{}_inbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
+
+                    if os.path.isfile(filename_by_dst_path):
+                        with open(filename_by_dst_path, 'a') as fh:
+                            fh.write('      '.join(valueLine) + '\r\n')
+                        count_values += 1
+                        if count_values == rows_len + 1:
                             count_values += 1
-                            if count_values == rows_len + 1:
-                                count_values += 1
-
-                    #CASE when dest_host exist in CMD
-                    if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
-                        dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
-                        dst_host = self._cmd[dst.start()+10:dst.end()]
-                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
-                        for _intf in _intfs[0].split('\n'):
-                            if re.search(_intf, self._cmd):
-                                inf = re.search(_intf, self._cmd)
-                        inbound = self._cmd[inf.start():inf.end()]
-                        if inbound == self.d_interface['external'][0]:
-                            filename_by_dst_path = "{}/{}{}/{}_inbound_flows.txt".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
-
-                        if os.path.isfile(filename_by_dst_path):
+                    else:
+                        test_file = open(filename_by_dst_path, 'w')
+                        test_file.close()
+                        if count_values >= 1 or count_values < rows_len + 1:
                             with open(filename_by_dst_path, 'a') as fh:
-                                fh.write('      '.join(valueLine) + '\r\n')
+                                fh.write('      '.join(labelLine) + '\r\n')
+                        with open(filename_by_dst_path, 'a') as fh:
+                            fh.write('      '.join(valueLine) + '\r\n')
+                        count_values += 1
+                        if count_values == rows_len + 1:
                             count_values += 1
-                            if count_values == rows_len + 1:
-                                count_values += 1
-                        else:
-                            test_file = open(filename_by_dst_path, 'w')
-                            test_file.close()
-                            if count_values >= 1 or count_values < rows_len + 1:
-                                with open(filename_by_dst_path, 'a') as fh:
-                                    fh.write('      '.join(labelLine) + '\r\n')
-                            with open(filename_by_dst_path, 'a') as fh:
-                                fh.write('      '.join(valueLine) + '\r\n')
-                            count_values += 1
-                            if count_values == rows_len + 1:
-                                count_values += 1
-
-                # record total for csv
                 # record_file_type = 0 : csv, 1 : txt, 2 : both
                 if record_file_type == 0 or record_file_type == 2:
-                    if not re.search('source_host|dest_host', self._cmd):
+                    # case record total
+                    if cmd_type is 'total':
                         if not (os.path.isfile(self._csv_logfilepath)):
                             csv_file = open(self._csv_logfilepath, 'w')
                             csv_file.close()
@@ -772,15 +899,11 @@ class Flowrecorder:
                                 writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                 writer.writerow(row)
                     # CASE when source_host exist in CMD
-                    if re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
+                    if cmd_type is 'src':
                         src = re.search('source_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         src_host = self._cmd[src.start()+12:src.end()]
-                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
-                        for _intf in _intfs[0].split('\n'):
-                            if re.search(_intf, self._cmd):
-                                inf = re.search(_intf, self._cmd)
-                        outbound = self._cmd[inf.start():inf.end()]
-                        if outbound == self.d_interface['internal'][0]:
+                        outbound = intf
+                        if outbound in self.d_interface['internal']:
                             filename_by_src_path = "{}/{}{}/{}_outbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], src_host)
                         if not (os.path.isfile(filename_by_src_path)):
                             csv_file = open(filename_by_src_path, 'w')
@@ -797,15 +920,11 @@ class Flowrecorder:
                                 writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                 writer.writerow(row)
                     # CASE when dest_host exist in CMD
-                    if re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd):
+                    if cmd_type is 'dst':
                         dst = re.search('dest_host=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+', self._cmd)
                         dst_host = self._cmd[dst.start()+10:dst.end()]
-                        _intfs = subprocess_open('echo \'show interfaces\' | /opt/stm/target/pcli/stm_cli.py admin:admin@localhost |egrep \'[Internal|External]\' |grep Ethernet |awk \'{print $1}\'')
-                        for _intf in _intfs[0].split('\n'):
-                            if re.search(_intf, self._cmd):
-                                inf = re.search(_intf, self._cmd)
-                        inbound = self._cmd[inf.start():inf.end()]
-                        if inbound == self.d_interface['external'][0]:
+                        inbound = intf
+                        if inbound in self.d_interface['external']:
                             filename_by_dst_path = "{}/{}{}/{}_inbound_flows.csv".format(FLOW_USER_LOG_FOLDER, self._foldername[0], self._foldername[1], dst_host)
                         if not (os.path.isfile(filename_by_dst_path)):
                             csv_file = open(filename_by_dst_path, 'w')
@@ -819,23 +938,30 @@ class Flowrecorder:
                             with open(filename_by_dst_path, "a") as fh:
                                 writer = csv.DictWriter(f=fh, fieldnames=reader.fieldnames)
                                 writer.writerow(row)
-        except Exception as e:
-            logger_recorder.error("write_row() cannot be executed, {}".format(e))
-            pass
-        else:
-            t2 = time.time()
+        if (cmd_type is 'total'):
             if record_file_type == 1 or record_file_type == 2:
-                print ("### txt extracted!")
-                print ("elapsed time : " + str(t2-t1))
-                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._txt_logfilepath))
+                return [cmd_type, intf, self._txt_logfilepath]
             if record_file_type == 0 or record_file_type == 2:
-                print ("### csv extracted!")
-                print ("elapsed time : " + str(t2-t1))
-                logger_recorder.info('Flow info total from interfaces {} is extracted to {} successfully!'.format(args[0], self._csv_logfilepath))
+                return [cmd_type, intf, self._csv_logfilepath]
+        elif (cmd_type is 'src'):
+            if record_file_type == 1 or record_file_type == 2:
+                return [cmd_type, intf, filename_by_src_path]
+            if record_file_type == 0 or record_file_type == 2:
+                return [cmd_type, intf, filename_by_src_path]
+        elif (cmd_type is 'dst'):
+            if record_file_type == 1 or record_file_type == 2:
+                return [cmd_type, intf, filename_by_dst_path]
+            if record_file_type == 0 or record_file_type == 2:
+                return [cmd_type, intf, filename_by_dst_path]
+        else:
+            if record_file_type == 1 or record_file_type == 2:
+                return [cmd_type, intf, self._txt_logfilepath]
+            if record_file_type == 0 or record_file_type == 2:
+                return [cmd_type, intf, self._csv_logfilepath]
 ################################################################################
 #      Def : extract total from the cmd
 ################################################################################
-    def record_total(self, raw_data, record_file_type, *args):
+    def record_total(self, raw_data, record_file_type, intf):
         """
         DEF record_total is the function that records file from the cmd into csv and txt
         raw_data_row - the raw data,
@@ -867,11 +993,15 @@ class Flowrecorder:
             rows_len = len(result)
             fieldnames.insert(0, 'timestamp')
             rows = GetRow(result)
-            self.write_row(rows, reader, record_file_type, fieldnames, flow_time, rows_len, *args)
+            try:
+                write_result = self.write_row(rows, reader, record_file_type, fieldnames, flow_time, rows_len, intf)
+            except Exception as e:
+                logger_recorder.error("write_row() cannot be executed, {}".format(e))
+            else:
+                logger_recorder.info('Flow info from interfaces {} is extracted to {} successfully!'.format(write_result[1], write_result[2]))
         except Exception as e:
             logger_recorder.error("record_total() cannot be executed, {}".format(e))
             pass
-
 ################################################################################
 #       Def : Extract data by subnetree
 ################################################################################
@@ -917,9 +1047,7 @@ class Flowrecorder:
             labels = []
             labels = fieldnames
             fieldnames.insert(0, 'timestamp')
-            count_df = 0
             # do log for the users
-            t1 = time.time()
             for row in result:
                 row['timestamp'] = flow_time
                 # for aligning txt
@@ -1027,7 +1155,4 @@ class Flowrecorder:
             logger_recorder.error("parse_data_by_host() cannot be executed, {}".format(e))
             pass
         else:
-            t2=time.time()
-            print ("### by host extracted!")
-            print ("elapsed time : " + str(t2-t1))
             logger_recorder.info('Flow info by host from interfaces {} is extracted to {} successfully!'.format(args[0], FLOW_USER_LOG_FOLDER))
