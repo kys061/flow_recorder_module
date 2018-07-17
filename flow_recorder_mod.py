@@ -556,7 +556,7 @@ def do_flow_recorder(script_name_path, curTime, process_name):
 
 def start_flow_recorder():
     try:
-        cmd = r'sudo /opt/stm/target/c.sh PUT scripts/flow_recorder.py start'
+        cmd = r'sudo /opt/stm/target/c.sh PUT scripts/flow_recorder.py start true'
         subprocess.Popen(cmd,
                          stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE,
